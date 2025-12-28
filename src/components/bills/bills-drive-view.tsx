@@ -12,6 +12,7 @@ type PlainUser = {
   email: string;
   role: string;
   supervisorId: string | null;
+  employeeCode: string | null; // ⬅️ added
 };
 
 type PlainBillItem = {
@@ -97,18 +98,18 @@ function StatusPill({ status }: { status: Status }) {
       ? "bg-red-100 text-red-700"
       : "bg-emerald-600/10 text-emerald-700";
 
-  const label =
-    statusOptions.find((s) => s.value === status)?.label ?? status.replaceAll("_", " ");
-
+  const label = status.replaceAll("_", " ").toLowerCase();
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${color}`}>
-      {label}
+      {label.charAt(0).toUpperCase() + label.slice(1)}
     </span>
   );
 }
 
 export function BillsDriveView({ bills, users, isSupervisor }: Props) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState("");             // free text: name/company/address/email
+  const [empCodeQ, setEmpCodeQ] = useState(""); // ⬅️ employee code query
+  const [on, setOn] = useState("");           // date filter: YYYY-MM-DD
   const [status, setStatus] = useState<"ALL" | Status>("ALL");
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -120,23 +121,40 @@ export function BillsDriveView({ bills, users, isSupervisor }: Props) {
 
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
+    const codeQ = empCodeQ.trim().toLowerCase();
+    const onDay = on.trim(); // YYYY-MM-DD
+
     return bills.filter((b) => {
       if (status !== "ALL" && b.status !== status) return false;
 
-      if (!query) return true;
+      // free text match
+      if (query) {
+        const hay = [
+          b.companyName,
+          b.companyAddress,
+          nameById.get(b.employeeId) ?? b.employee?.name ?? "",
+          b.employee?.email ?? "",
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!hay.includes(query)) return false;
+      }
 
-      const hay = [
-        b.companyName,
-        b.companyAddress,
-        nameById.get(b.employeeId) ?? "",
-        b.employee?.email ?? "",
-      ]
-        .join(" ")
-        .toLowerCase();
+      // employee code match
+      if (codeQ) {
+        const code = (b.employee?.employeeCode ?? "").toLowerCase();
+        if (!code.includes(codeQ)) return false;
+      }
 
-      return hay.includes(query);
+      // date match
+      if (onDay) {
+        const hasOnDay = (b.items || []).some((it) => (it.date || "").slice(0, 10) === onDay);
+        if (!hasOnDay) return false;
+      }
+
+      return true;
     });
-  }, [bills, q, status, nameById]);
+  }, [bills, q, empCodeQ, on, status, nameById]);
 
   return (
     <div className="space-y-4">
@@ -144,15 +162,24 @@ export function BillsDriveView({ bills, users, isSupervisor }: Props) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-semibold">Bills</h1>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr),180px,170px,auto]">
           <Input
-            placeholder={isSupervisor ? "Search by employee, company, address…" : "Search bills…"}
+            placeholder={isSupervisor ? "Search name/company/address/email…" : "Search bills…"}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            className="w-full sm:w-72"
           />
-
-          {/* native select keeps deps simple */}
+          <Input
+            placeholder="Employee Code…"
+            value={empCodeQ}
+            onChange={(e) => setEmpCodeQ(e.target.value)}
+            title="Filter by employee code"
+          />
+          <Input
+            type="date"
+            value={on}
+            onChange={(e) => setOn(e.target.value)}
+            title="Filter bills having any line-item on this date"
+          />
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value as any)}
@@ -172,8 +199,9 @@ export function BillsDriveView({ bills, users, isSupervisor }: Props) {
         <div className="grid grid-cols-12 bg-muted/40 px-3 py-2 text-xs font-semibold">
           <div className="col-span-4">Name</div>
           <div className="col-span-3">Owner</div>
+          <div className="col-span-1">Employee Code</div> {/* ⬅️ changed */}
           <div className="col-span-2">Status</div>
-          <div className="col-span-2">Last updated</div>
+          <div className="col-span-1">Last updated</div>
           <div className="col-span-1 text-right">Total</div>
         </div>
 
@@ -183,7 +211,6 @@ export function BillsDriveView({ bills, users, isSupervisor }: Props) {
             const isOpen = openId === b.id;
             return (
               <li key={b.id} className="border-t">
-                {/* Row */}
                 <button
                   onClick={() => setOpenId(isOpen ? null : b.id)}
                   className="grid grid-cols-12 w-full items-center px-3 py-2 text-sm text-left hover:bg-muted/30"
@@ -195,22 +222,30 @@ export function BillsDriveView({ bills, users, isSupervisor }: Props) {
                   <div className="col-span-3 truncate">
                     {b.employee?.name ?? nameById.get(b.employeeId) ?? "—"}
                   </div>
+                  <div className="col-span-1 truncate">
+                    <span className="font-mono text-xs">
+                      {b.employee?.employeeCode ?? "—"} {/* ⬅️ show code */}
+                    </span>
+                  </div>
                   <div className="col-span-2">
                     <StatusPill status={b.status} />
                   </div>
-                  <div className="col-span-2">{formatDateISO(b.updatedAt)}</div>
+                  <div className="col-span-1">{formatDateISO(b.updatedAt)}</div>
                   <div className="col-span-1 text-right">{formatBDT(b.amount)}</div>
                 </button>
 
-                {/* Expanded details */}
                 {isOpen && (
                   <div className="bg-white px-4 py-4">
-                    <div className="grid md:grid-cols-2 gap-4 mb-4 text-sm">
+                    <div className="grid md:grid-cols-3 gap-4 mb-4 text-sm">
                       <div>
                         <p className="text-xs text-muted-foreground">Employee</p>
                         <p className="font-medium">
                           {b.employee?.name ?? nameById.get(b.employeeId) ?? "—"}
                         </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Employee Code</p>
+                        <p className="font-mono text-xs">{b.employee?.employeeCode ?? "—"}</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Bill ID</p>

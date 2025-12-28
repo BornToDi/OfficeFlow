@@ -36,10 +36,11 @@ model User {
   role           Role          @default(employee)
   designation    String?
   employeeCode   String?       @unique
-  passwordHash   String?       // ← ADD THIS
+  passwordHash   String? // ← ADD THIS
   supervisor     User?         @relation("SupervisorEmployees", fields: [supervisorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   supervisorId   String?
   employees      User[]        @relation("SupervisorEmployees")
+  assignedBills  Bill[]        @relation("SupervisorAssignedBills")
   bills          Bill[]        @relation("EmployeeBills")
   actorHistories BillHistory[] @relation("ActorHistory")
   createdAt      DateTime      @default(now())
@@ -48,22 +49,27 @@ model User {
   @@index([supervisorId])
 }
 
-
 model Bill {
-  id             String        @id @default(cuid())
+  id             String @id @default(cuid())
   companyName    String
   companyAddress String
-  employee       User          @relation("EmployeeBills", fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  employee       User   @relation("EmployeeBills", fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   employeeId     String
-  amount         Decimal       @db.Decimal(12, 2)
-  amountInWords  String
-  status         BillStatus    @default(SUBMITTED)
-  items          BillItem[]
-  history        BillHistory[]
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+
+  // NEW: assigned supervisor for this bill (optional)
+  supervisor   User?   @relation("SupervisorAssignedBills", fields: [supervisorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  supervisorId String?
+
+  amount        Decimal       @db.Decimal(12, 2)
+  amountInWords String
+  status        BillStatus    @default(SUBMITTED)
+  items         BillItem[]
+  history       BillHistory[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   @@index([employeeId])
+  @@index([supervisorId])
 }
 
 // prisma/schema.prisma
@@ -84,7 +90,6 @@ model BillItem {
   @@index([billId])
   @@index([date])
 }
-
 
 model BillHistory {
   id        String     @id @default(cuid())

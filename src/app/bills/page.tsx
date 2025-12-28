@@ -1,7 +1,8 @@
 // src/app/bills/page.tsx
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/actions";
-import { getBillsForRole } from "@/lib/repo";
+import { getBillsForRolePage } from "@/lib/repo";
+import { PaginationControls } from "@/components/pagination-controls";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,7 +15,7 @@ type PlainBillItem = {
   to: string;
   transport: string | null;
   purpose: string;
-  amount: number; // plain number
+  amount: number;
 };
 
 type PlainBill = {
@@ -28,6 +29,7 @@ type PlainBill = {
     email: string;
     role: string;
     supervisorId: string | null;
+    employeeCode: string | null;
   } | null;
   amount: number;
   amountInWords: string;
@@ -41,22 +43,33 @@ type PlainBill = {
     | "REJECTED_BY_ACCOUNTS"
     | "REJECTED_BY_MANAGEMENT"
     | "PAID";
-  createdAt: string; // ISO
-  updatedAt: string; // ISO
+  createdAt: string;
+  updatedAt: string;
   items: PlainBillItem[];
 };
 
-export default async function BillsPage() {
+export default async function BillsPage({
+  searchParams,
+}: {
+  searchParams?: { page?: string; _debugInfo?: string };
+}) {
+  // await the proxy before reading properties
+  const sp = await searchParams;
+  const page = Number(sp?.page ?? "1") || 1;
+
+  // ensure session is available before using it
   const session = await getSession();
   if (!session) redirect("/");
 
-  const rawBills = await getBillsForRole({
-    id: session.user.id,
-    role: session.user.role,
-  });
+  // ← DB-backed pagination (10 per page)
+  const { rows, totalPages, page: currentPage } = await getBillsForRolePage(
+    { id: session.user.id, role: session.user.role },
+    page,
+    10
+  );
 
   // Convert Prisma results to plain serializable objects
-  const bills: PlainBill[] = rawBills
+  const bills: PlainBill[] = rows
     .sort((a, b) => +b.updatedAt - +a.updatedAt) // newest first (Drive-like)
     .map((b) => ({
       id: b.id,
@@ -70,6 +83,7 @@ export default async function BillsPage() {
             email: b.employee.email,
             role: String(b.employee.role),
             supervisorId: b.employee.supervisorId ?? null,
+            employeeCode: b.employee.employeeCode ?? null,
           }
         : null,
       amount: Number(b.amount),
@@ -77,7 +91,7 @@ export default async function BillsPage() {
       status: b.status as PlainBill["status"],
       createdAt: b.createdAt.toISOString(),
       updatedAt: b.updatedAt.toISOString(),
-      items: (b.items || []).map((it) => ({
+      items: (b.items || []).map((it: any) => ({
         id: it.id,
         billId: it.billId,
         date: new Date(it.date).toISOString(),
@@ -101,13 +115,20 @@ export default async function BillsPage() {
 
   const isSupervisor = session.user.role === "supervisor";
 
-  // Import the client component (keeps this file purely server)
-  const BillsDriveView = (await import("@/components/bills/bills-drive-view"))
-    .BillsDriveView;
+  // Client component
+  const BillsDriveView = (await import("@/components/bills/bills-drive-view")).BillsDriveView;
 
   return (
     <div className="container mx-auto p-6">
       <BillsDriveView bills={bills} users={users} isSupervisor={isSupervisor} />
+
+      {/* Pager */}
+      <PaginationControls
+        page={currentPage}
+        totalPages={totalPages}
+        basePath="/bills"
+        searchParams={searchParams}
+      />
     </div>
   );
 }

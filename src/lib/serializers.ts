@@ -1,34 +1,47 @@
-// src/lib/serializers.ts
-export function toPlainUser(u: any) {
-  if (!u) return u;
+// Minimal serializers to convert Prisma results into plain JSON-friendly objects
+
+function toISO(d: any) {
+  if (!d) return d;
+  try {
+    return typeof d.toISOString === "function" ? d.toISOString() : String(d);
+  } catch {
+    return String(d);
+  }
+}
+
+export function toPlainUser(user: any) {
+  if (!user) return null;
+  const { passwordHash, ...rest } = user;
   return {
-    ...u,
-    createdAt: u.createdAt ? new Date(u.createdAt).toISOString() : null,
-    updatedAt: u.updatedAt ? new Date(u.updatedAt).toISOString() : null,
+    ...rest,
+    // normalize dates
+    createdAt: toISO(rest.createdAt),
+    updatedAt: toISO(rest.updatedAt),
   };
 }
 
-export function toPlainBill(b: any) {
-  if (!b) return b;
+export function toPlainBill(bill: any) {
+  if (!bill) return null;
   return {
-    ...b,
-    amount: Number(b.amount),
-    createdAt: b.createdAt ? new Date(b.createdAt).toISOString() : null,
-    updatedAt: b.updatedAt ? new Date(b.updatedAt).toISOString() : null,
-    employee: b.employee ? toPlainUser(b.employee) : null,
-    items: Array.isArray(b.items)
-      ? b.items.map((it: any) => ({
+    ...bill,
+    // Prisma Decimal -> string
+    amount: bill?.amount?.toString ? bill.amount.toString() : bill.amount,
+    createdAt: toISO(bill.createdAt),
+    updatedAt: toISO(bill.updatedAt),
+    // normalize nested arrays/objects if present
+    items: Array.isArray(bill.items)
+      ? bill.items.map((it: any) => ({
           ...it,
-          amount: Number(it.amount),
-          date: it.date ? new Date(it.date).toISOString() : null,
+          date: toISO(it.date),
         }))
-      : [],
-    history: Array.isArray(b.history)
-      ? b.history.map((h: any) => ({
+      : bill.items,
+    history: Array.isArray(bill.history)
+      ? bill.history.map((h: any) => ({
           ...h,
-          timestamp: h.timestamp ? new Date(h.timestamp).toISOString() : null,
-          actor: h.actor ? toPlainUser(h.actor) : null,
+          timestamp: toISO(h.timestamp),
         }))
-      : [],
+      : bill.history,
+    employee: bill.employee ? toPlainUser(bill.employee) : bill.employee,
+    supervisor: bill.supervisor ? toPlainUser(bill.supervisor) : bill.supervisor,
   };
 }

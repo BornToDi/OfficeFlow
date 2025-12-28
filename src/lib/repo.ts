@@ -1,5 +1,5 @@
 // src/lib/repo.ts
-import { prisma } from "./db";
+import { prisma } from "./prisma"; // ensure this file exports your Prisma client
 import type { Role, BillStatus } from "./types";
 
 // ---- DUPLICATE TRIP GUARD ----
@@ -240,11 +240,13 @@ export async function updateUserProfile(
 }
 
 export async function listSupervisors() {
-  return prisma.user.findMany({
-    where: { role: "supervisor" },
-    select: { id: true, name: true, email: true, employeeCode: true },
+  // return minimal supervisor list for dropdown
+  const sup = await prisma.user.findMany({
+    where: { role: "supervisor" }, // use enum value matching your schema (lowercase)
     orderBy: { name: "asc" },
+    select: { id: true, name: true, email: true, designation: true }
   });
+  return sup;
 }
 
 export async function listDirectReports(supervisorId: string) {
@@ -367,31 +369,98 @@ export async function getBillById(id: string) {
   });
 }
 
+const VALID_BILL_STATUS = [
+  "DRAFT",
+  "SUBMITTED",
+  "APPROVED_BY_SUPERVISOR",
+  "APPROVED_BY_ACCOUNTS",
+  "APPROVED_BY_MANAGEMENT",
+  "REJECTED_BY_SUPERVISOR",
+  "REJECTED_BY_ACCOUNTS",
+  "REJECTED_BY_MANAGEMENT",
+  "PAID",
+] as const;
+
+const ROLE_TO_STATUS: Record<string, string> = {
+  supervisor: "APPROVED_BY_SUPERVISOR",
+  accounts: "APPROVED_BY_ACCOUNTS",
+  management: "APPROVED_BY_MANAGEMENT",
+};
 
 export async function updateBillStatus(
   billId: string,
-  newStatus: BillStatus,
+  newStatus?: string | undefined,
   actorId?: string,
-  comment?: string
+  comment?: string,
+  nextSupervisorId?: string
 ) {
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.bill.update({
+  const bill = await prisma.bill.findUnique({ where: { id: billId } });
+  if (!bill) throw new Error("Bill not found");
+
+  // Forwarding path — assign supervisor and keep bill in SUBMITTED state
+  if (nextSupervisorId) {
+    const target = await prisma.user.findUnique({ where: { id: nextSupervisorId } });
+    if (!target || String(target.role).toLowerCase() !== "supervisor") {
+      throw new Error("Selected user is not a supervisor");
+    }
+
+    const statusToSet = "SUBMITTED";
+    const updated = await prisma.bill.update({
       where: { id: billId },
-      data: { status: newStatus },
+      data: {
+        supervisorId: nextSupervisorId,
+        status: statusToSet as any,
+      },
     });
 
-    await tx.billHistory.create({
+    await prisma.billHistory.create({
       data: {
         billId,
-        status: newStatus,
         actorId: actorId ?? null,
-        comment: comment ?? null,
+        status: statusToSet as any,
+        comment: comment ?? `Forwarded to ${target.name ?? nextSupervisorId}`,
       },
     });
 
     return updated;
+  }
+
+  // If caller supplied a role string by mistake, map it to a BillStatus
+  let statusToApply: string | undefined = newStatus;
+  if (statusToApply && !VALID_BILL_STATUS.includes(statusToApply as any)) {
+    const lower = String(statusToApply).toLowerCase();
+    if (ROLE_TO_STATUS[lower]) {
+      statusToApply = ROLE_TO_STATUS[lower];
+    } else {
+      throw new Error(
+        `Invalid BillStatus provided to updateBillStatus: ${String(newStatus)}. Expected one of: ${VALID_BILL_STATUS.join(
+          ", "
+        )}`
+      );
+    }
+  }
+
+  if (!statusToApply) {
+    throw new Error("No valid status provided to updateBillStatus.");
+  }
+
+  const updated = await prisma.bill.update({
+    where: { id: billId },
+    data: { status: statusToApply as any },
   });
+
+  await prisma.billHistory.create({
+    data: {
+      billId,
+      actorId: actorId ?? null,
+      status: statusToApply as any,
+      comment: comment ?? "",
+    },
+  });
+
+  return updated;
 }
+
 
 export async function listAllUsers() {
   return prisma.user.findMany({
@@ -687,3 +756,150 @@ export async function getBillsForRole(user: { id: string; role: Role }) {
       });
   }
 }
+import type { Role } from "./types";
+
+/** Sidebar badge: pending items count for the current user/role */
+export async function pendingCountForUser(user: { id: string; role: Role }) {
+  switch (user.role) {
+    case "supervisor":
+      return prisma.bill.count({
+        where: {
+          status: "SUBMITTED",
+          OR: [
+            { supervisorId: user.id },                           // explicitly forwarded to me
+            { supervisorId: null, employee: { supervisorId: user.id } }, // default route: my direct reports
+          ],
+        },
+      });
+
+    case "accounts":
+      return prisma.bill.count({
+        where: {
+          status: {
+            in:
+              [
+                "APPROVED_BY_SUPERVISOR",
+                "APPROVED_BY_MANAGEMENT",
+              ] as BillStatus[],
+          },
+        },
+      });
+
+    case "management":
+      return prisma.bill.count({
+        where: { status: "APPROVED_BY_ACCOUNTS" },
+      });
+
+    case "employee":
+      return prisma.bill.count({
+        where: {
+          employeeId: user.id,
+          status: {
+            in:
+              [
+                "SUBMITTED",
+                "APPROVED_BY_SUPERVISOR",
+                "APPROVED_BY_ACCOUNTS",
+                "APPROVED_BY_MANAGEMENT",
+              ] as BillStatus[],
+          },
+        },
+      });
+
+    default:
+      return 0;
+  }
+}
+
+/* Optional compatibility alias (safe to include) */
+export const countPendingForSupervisor = pendingCountForUser;
+
+
+// --- PAGINATION HELPERS ---
+export type PageResult<T> = { total: number; page: number; pageSize: number; totalPages: number; rows: T[] };
+
+function roleWhere(user: { id: string; role: Role }) {
+  if (user.role === "employee") return { employeeId: user.id };
+  if (user.role === "supervisor") {
+    return {
+      OR: [{ employee: { supervisorId: user.id } }, { employeeId: user.id }],
+    };
+  }
+  // accounts/management -> all
+  return {};
+}
+
+// src/lib/repo.ts
+//export type PageResult<T> = { total: number; page: number; pageSize: number; totalPages: number; rows: T[] };
+
+export async function getBillsForRolePage(
+  user: { id: string; role: Role },
+  page = 1,
+  pageSize = 10
+): Promise<PageResult<any>> {
+  const safePage = Math.max(1, Number(page || 1));
+  const take = Math.max(1, Number(pageSize || 10));
+  const skip = (safePage - 1) * take;
+
+  let where: any = {};
+  if (user.role === "employee") {
+    where = { employeeId: user.id };
+  } else if (user.role === "supervisor") {
+    // Show all bills relevant to this supervisor: team’s bills, forwarded to me, and my own
+    where = {
+      OR: [
+        { employee: { supervisorId: user.id } }, // my team (default supervisor route)
+        { supervisorId: user.id },               // explicitly forwarded to me
+        { employeeId: user.id },                 // my own bills
+      ],
+    };
+  } else if (user.role === "accounts") {
+    where = { status: { in: ["APPROVED_BY_SUPERVISOR", "APPROVED_BY_MANAGEMENT"] } };
+  } else if (user.role === "management") {
+    where = { status: "APPROVED_BY_ACCOUNTS" };
+  }
+
+  const [total, rows] = await prisma.$transaction([
+    prisma.bill.count({ where }),
+    prisma.bill.findMany({
+      where,
+      orderBy: { updatedAt: "desc" }, // newest first
+      skip,
+      take,
+      include: {
+        employee: {
+          select: {
+            id: true, name: true, email: true, role: true,
+            supervisorId: true, designation: true, employeeCode: true,
+          },
+        },
+        items: true,
+        history: true,
+      },
+    }),
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(total / take));
+  return { total, page: safePage, pageSize: take, totalPages, rows };
+}
+
+/* ========== ROLE-SCOPED PENDING COUNTS ========== */
+
+export async function getPendingCountForUser(userId: string, role: Role) {
+  if (role === "supervisor") {
+    // bills assigned to this supervisor and awaiting their action
+    return prisma.bill.count({
+      where: { supervisorId: userId, status: "SUBMITTED" },
+    });
+  }
+  if (role === "accounts") {
+    // bills ready for accounts review
+    return prisma.bill.count({
+      where: { status: "APPROVED_BY_SUPERVISOR" },
+    });
+  }
+  // employees / others: no left-side notifications by default
+  return 0;
+}
+
+

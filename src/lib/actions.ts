@@ -977,3 +977,55 @@ async function saveUpload(
   // public URL served by Next from /public
   return `/uploads/${name}`;
 }
+
+// NEW ACTION: approveAction
+export async function approveAction(formData: FormData) {
+  const session = await getSession();
+  if (!session) throw new Error("Not authenticated");
+
+  const billId = String(formData.get("billId") ?? "");
+  const action = String(formData.get("action") ?? "approve"); // "approve" or "reject"
+  const comment = String(formData.get("comment") ?? "");
+  const rawNext = formData.get("nextSupervisorId");
+  const nextSupervisorId = rawNext ? String(rawNext).trim() : "";
+
+  if (!billId) throw new Error("Missing billId");
+
+  if (action === "approve") {
+    if (nextSupervisorId) {
+      // Forward: set assigned supervisor and keep status in supervisor workflow
+      await updateBillStatus(
+        billId,
+        undefined, // repo will force SUBMITTED for forwarding
+        session.user.id,
+        comment || `Forwarded to ${nextSupervisorId}`,
+        nextSupervisorId
+      );
+
+      revalidatePath(`/bills/${billId}`);
+      revalidatePath("/dashboard");
+      return redirect(`/bills/${billId}`);
+    }
+
+    // Final supervisor approval -> use explicit BillStatus
+    await updateBillStatus(
+      billId,
+      "APPROVED_BY_SUPERVISOR" as any,
+      session.user.id,
+      comment || "Approved by supervisor"
+    );
+  } else if (action === "reject") {
+    await updateBillStatus(
+      billId,
+      "REJECTED_BY_SUPERVISOR" as any,
+      session.user.id,
+      comment || "Rejected by supervisor"
+    );
+  } else {
+    throw new Error("Unknown action");
+  }
+
+  revalidatePath(`/bills/${billId}`);
+  revalidatePath("/dashboard");
+  return redirect(`/bills/${billId}`);
+}

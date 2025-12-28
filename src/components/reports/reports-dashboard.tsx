@@ -1,81 +1,168 @@
-import type { Bill, User } from "@/lib/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatusPieChart } from "./status-pie-chart";
-import { MonthlyBillsChart } from "./monthly-bills-chart";
+// src/components/reports/reports-dashboard.tsx
+"use client";
 
-interface ReportsDashboardProps {
-  bills: Bill[];
-  users: User[];
-}
+type StatusAgg = {
+  [status: string]: { count: number; total: number };
+};
 
-export function ReportsDashboard({ bills, users }: ReportsDashboardProps) {
-  const totalBills = bills.length;
-  const totalAmount = bills.reduce((sum, bill) => sum + bill.amount, 0);
-  const pendingBills = bills.filter(bill => bill.status !== 'PAID' && !bill.status.startsWith('REJECTED')).length;
-  const paidBills = bills.filter(bill => bill.status === 'PAID').length;
+export function ReportsDashboard(props: {
+  totals: { count: number; amount: number };
+  statusMap: StatusAgg;
+  funnel: { label: string; count: number; pct: number }[];
+  trend: { ym: string; total: number; count: number }[];
+}) {
+  const { totals, statusMap, funnel, trend } = props;
+
+  const niceCurrency = (n: number) =>
+    new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: "BDT",
+      maximumFractionDigits: 0,
+    }).format(n);
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Bills</CardTitle>
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" className="h-4 w-4 text-muted-foreground"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalBills}</div>
-            <p className="text-xs text-muted-foreground">Total bills submitted all time</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Amount</CardTitle>
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" className="h-4 w-4 text-muted-foreground"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{new Intl.NumberFormat("en-IN", { style: "currency", currency: "BDT" }).format(totalAmount)}</div>
-            <p className="text-xs text-muted-foreground">Total value of all bills</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Bills</CardTitle>
-             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" className="h-4 w-4 text-muted-foreground"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.88.98 6.7 2.6l-2.7 2.7h8V2"></path></svg>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{pendingBills}</div>
-            <p className="text-xs text-muted-foreground">Bills currently in approval flow</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Paid Bills</CardTitle>
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" className="h-4 w-4 text-muted-foreground"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{paidBills}</div>
-            <p className="text-xs text-muted-foreground">Bills that have been paid</p>
-          </CardContent>
-        </Card>
+    <div className="space-y-8">
+      {/* KPI header */}
+      <section className="grid gap-4 sm:grid-cols-3">
+        <KpiCard
+          title="Total Bills"
+          value={String(totals.count)}
+          sub={niceCurrency(totals.amount)}
+        />
+        <KpiCard
+          title="Paid"
+          value={String(statusMap.PAID?.count ?? 0)}
+          sub={niceCurrency(statusMap.PAID?.total ?? 0)}
+        />
+        <KpiCard
+          title="Rejected"
+          value={String(
+            (statusMap.REJECTED_BY_SUPERVISOR?.count ?? 0) +
+              (statusMap.REJECTED_BY_ACCOUNTS?.count ?? 0) +
+              (statusMap.REJECTED_BY_MANAGEMENT?.count ?? 0)
+          )}
+          sub={niceCurrency(
+            (statusMap.REJECTED_BY_SUPERVISOR?.total ?? 0) +
+              (statusMap.REJECTED_BY_ACCOUNTS?.total ?? 0) +
+              (statusMap.REJECTED_BY_MANAGEMENT?.total ?? 0)
+          )}
+        />
+      </section>
+
+      {/* Ratio cards */}
+      <section className="grid gap-4 md:grid-cols-3">
+        {funnel.map((f) => (
+          <RatioCard key={f.label} label={f.label} count={f.count} pct={f.pct} />
+        ))}
+      </section>
+
+      {/* Status breakdown table with micro bars */}
+      <section className="rounded-2xl border bg-background p-4">
+        <h3 className="mb-4 text-base font-semibold">Status Breakdown</h3>
+        <div className="overflow-x-auto">
+          <table className="min-w-[520px] w-full text-sm">
+            <thead className="text-left text-muted-foreground">
+              <tr>
+                <th className="py-2 pr-4">Status</th>
+                <th className="py-2 pr-4">Count</th>
+                <th className="py-2 pr-4">Amount</th>
+                <th className="py-2">Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(statusMap).map(([key, v]) => {
+                const share =
+                  totals.count > 0 ? Math.round((v.count / totals.count) * 100) : 0;
+                return (
+                  <tr key={key} className="border-t">
+                    <td className="py-2 pr-4 font-medium">{key}</td>
+                    <td className="py-2 pr-4">{v.count}</td>
+                    <td className="py-2 pr-4">{niceCurrency(v.total)}</td>
+                    <td className="py-2">
+                      <Bar share={share} label={`${share}%`} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Simple 6-month trend (count) */}
+      <section className="rounded-2xl border bg-background p-4">
+        <h3 className="mb-4 text-base font-semibold">Last 6 Months (Count)</h3>
+        <div className="grid grid-cols-6 gap-3">
+          {trend.map((t) => (
+            <div key={t.ym} className="flex flex-col items-stretch">
+              <div className="h-28 rounded-lg border p-2 flex items-end">
+                <div
+                  className="w-full rounded bg-blue-500/90"
+                  style={{
+                    height: `${scale(t.count, trend)}%`,
+                    transition: "height .4s",
+                  }}
+                  title={`${t.count} bills`}
+                />
+              </div>
+              <div className="mt-2 text-center text-xs text-black">
+                {t.ym}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function KpiCard(props: { title: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-2xl border bg-background p-4">
+      <div className="text-sm text-muted-foreground">{props.title}</div>
+      <div className="mt-1 text-2xl font-semibold">{props.value}</div>
+      {props.sub && (
+        <div className="mt-1 text-xs text-muted-foreground">{props.sub}</div>
+      )}
+    </div>
+  );
+}
+
+function RatioCard(props: { label: string; count: number; pct: number }) {
+  return (
+    <div className="rounded-2xl border bg-background p-4">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium">{props.label}</div>
+        <div className="text-sm text-muted-foreground">{props.count}</div>
       </div>
-      <div className="grid gap-6 md:grid-cols-2">
-         <Card>
-            <CardHeader>
-                <CardTitle>Bills by Status</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <StatusPieChart bills={bills} />
-            </CardContent>
-         </Card>
-         <Card>
-            <CardHeader>
-                <CardTitle>Monthly Submissions</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <MonthlyBillsChart bills={bills} />
-            </CardContent>
-         </Card>
+      <div className="mt-2 h-2 w-full rounded-full ">
+        <div
+          className="h-2 rounded-full bg-blue-500/90"
+          style={{ width: `${Math.min(100, Math.max(0, props.pct))}%` }}
+        />
+      </div>
+      <div className="mt-1 text-right text-xs text-muted-foreground">
+        {props.pct}% of total
       </div>
     </div>
   );
+}
+
+function Bar(props: { share: number; label?: string }) {
+  const w = Math.min(100, Math.max(0, props.share));
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-2 flex-1 rounded-full bg-muted">
+        <div className="h-2 rounded-full bg-blue-500/90" style={{ width: `${w}%` }} />
+      </div>
+      <span className="w-10 text-right text-xs text-muted-foreground">
+        {props.label ?? `${w}%`}
+      </span>
+    </div>
+  );
+}
+
+function scale(v: number, arr: { count: number }[]) {
+  const max = Math.max(1, ...arr.map((x) => x.count));
+  return Math.round((v / max) * 100);
 }
