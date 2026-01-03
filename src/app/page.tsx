@@ -10,7 +10,7 @@ export default function LoginPage() {
           <Logo />
         </div>
         <LoginForm />
-        <p className="mt-4 text-center text-sm text-muted-foreground">
+        {/* <p className="mt-4 text-center text-sm text-muted-foreground">
           Don&apos;t have an account?{" "}
           <Link
             href="/register"
@@ -18,7 +18,7 @@ export default function LoginPage() {
           >
             Register
           </Link>
-        </p>
+        </p> */}
       </div>
     </div>
   );

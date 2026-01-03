@@ -265,17 +265,17 @@ async function approveOrForward(formData: FormData) {
       </option>
     ))}
   </select>
-  <button type="submit" name="action" value="approve" className="btn-approve">
+  <button className="rounded bg-green-600 px-3 py-1.5 text-sm text-white hover:opacity-90" type="submit" name="action" value="approve">
     Approve
   </button>
 </form>
-
+{/* 
 <form action={approveOrForward} className="mt-2 flex items-center gap-2">
   <input name="comment" placeholder="Reason" className="rounded border px-2 py-1 text-sm" required />
   <button type="submit" name="action" value="reject" className="btn-reject">
     Reject
   </button>
-</form>
+</form> */}
 
 
               <form action={rejectAction} className="flex items-center gap-2">
