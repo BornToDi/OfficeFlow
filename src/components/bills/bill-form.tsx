@@ -103,6 +103,7 @@ const billFormSchema = z.object({
   companyAddress: z.string().min(1, "Required"),
   employeeName: z.string().min(1, "Required"),
   employeeDesignation: z.string().optional(), // visible but not submitted
+  supervisorId: z.string().optional(),
   items: z.array(z.any()).min(1, "Add at least one row"),
 });
 type BillFormValues = z.infer<typeof billFormSchema>;
@@ -235,7 +236,7 @@ type Props =
 
 function SubmitButton({ isPending, children, disabled }: { isPending:boolean; children:React.ReactNode; disabled?:boolean }) {
   return (
-    <Button type="submit" className="w-full bg-accent hover:bg-accent/90" disabled={isPending || disabled}>
+    <Button type="submit" className="min-w-[140px] w-auto bg-accent hover:bg-accent/90 px-4" disabled={isPending || disabled}>
       {isPending ? "Working..." : children}
     </Button>
   );
@@ -263,10 +264,11 @@ export function BillForm(props: Props) {
   const defaults: Partial<BillFormValues> = useMemo(() => {
     if (!props.bill) {
       return {
-        companyName: "Networld Bangladesh Limited",
+        companyName: "Networld Bangladesh PLC",
         companyAddress: "57 & 57/A, Uday Tower, (4th Floor) Gulshan 1, Gulshan Avenue, 1212 Dhaka",
-        employeeName: "user" in props ? props.user.name : "",
-        employeeDesignation: "user" in props ? props.user.designation ?? "" : "",
+        employeeName: "user" in props ? (props.user as any).name : "",
+        employeeDesignation: "user" in props ? (props.user as any).designation ?? "" : "",
+        supervisorId: "",
         items:
           formatType === "BILL1"
             ? [{ date: new Date(), from: "", to: "", transport: "", purpose: "", amount: undefined as any }]
@@ -284,6 +286,7 @@ export function BillForm(props: Props) {
       return {
         billId: b.id, companyName:b.companyName, companyAddress:b.companyAddress,
         employeeName:b.employeeName, employeeDesignation:b.employeeDesignation ?? "",
+        supervisorId: (b as any).supervisorId ?? "",
         items: b.items.map<RowB1>((it) => ({
           date: safeDate(it.date), from: it.from, to: it.to, transport: it.transport ?? "", purpose: it.purpose, amount: Number(it.amount||0)
         })),
@@ -293,6 +296,7 @@ export function BillForm(props: Props) {
       return {
         billId: b.id, companyName:b.companyName, companyAddress:b.companyAddress,
         employeeName:b.employeeName, employeeDesignation:b.employeeDesignation ?? "",
+        supervisorId: (b as any).supervisorId ?? "",
         items: b.items.map<RowB2>((it) => {
           const p = decB2(it.purpose);
           return { name:p.name, dateFrom:safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date), purpose:p.purpose, local:p.local, trip:p.trip, others:p.others, advance:p.advance, remarks:p.remarks };
@@ -303,6 +307,7 @@ export function BillForm(props: Props) {
       return {
         billId: b.id, companyName:b.companyName, companyAddress:b.companyAddress,
         employeeName:b.employeeName, employeeDesignation:b.employeeDesignation ?? "",
+        supervisorId: (b as any).supervisorId ?? "",
         items: b.items.map<RowB3>((it) => {
           const p = decB3(it.purpose);
           return { name:p.name, dateFrom:safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date), purpose:p.purpose, food:p.food, hotel:p.hotel, others:p.others, advance:p.advance, remarks:p.remarks };
@@ -313,6 +318,7 @@ export function BillForm(props: Props) {
     return {
       billId: b.id, companyName:b.companyName, companyAddress:b.companyAddress,
       employeeName:b.employeeName, employeeDesignation:b.employeeDesignation ?? "",
+      supervisorId: (b as any).supervisorId ?? "",
       items: b.items.map<RowB4>((it) => {
         const p = decB4(it.purpose);
         return {
@@ -375,6 +381,17 @@ export function BillForm(props: Props) {
     }, 0);
     return { total, words: numberToWords(total) + " Only" };
   }, [watchedItems, formatType]);
+
+  // Supervisor dropdown data (client-side fetch)
+  const isSupervisorUser = "user" in props && (props.user as any)?.role === "supervisor";
+  const [supervisors, setSupervisors] = useState<{ id: string; name: string; email?: string }[]>([]);
+  useEffect(() => {
+    if (!isSupervisorUser) return;
+    fetch("/api/supervisors")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setSupervisors(data || []))
+      .catch(() => {});
+  }, [isSupervisorUser]);
 
   // keep rowFiles in sync with format and number of fields
   useEffect(() => {
@@ -578,6 +595,8 @@ export function BillForm(props: Props) {
 
     fd.append("totalAmount", String(totals.total));
     fd.append("amountInWords", totals.words);
+    // supervisorId (optional) — allow supervisor to forward on submit
+    if ((data as any).supervisorId) fd.append("supervisorId", (data as any).supervisorId);
     fd.delete("employeeDesignation");
     return fd;
   };
@@ -725,6 +744,29 @@ export function BillForm(props: Props) {
             </div>
           </div>
         </div>
+
+        {isSupervisorUser && (
+          <FormField
+            control={control}
+            name="supervisorId"
+            render={({ field }) => (
+              <FormItem className="md:col-span-2">
+                <FormLabel>Forward to Supervisor (optional)</FormLabel>
+                <FormControl>
+                  <select {...field} className="w-full rounded-md border bg-background px-3 py-2 text-sm">
+                    <option value="">Default — send to Accounts</option>
+                    {supervisors.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}{s.email ? ` (${s.email})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <Separator />
 

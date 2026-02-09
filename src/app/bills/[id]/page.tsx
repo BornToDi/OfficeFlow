@@ -44,7 +44,9 @@ export default async function BillDetail({
   if (!session) return <div className="p-6 text-sm">Not signed in.</div>;
 
   const { id } = params;
-  const wantsEdit = (searchParams?.edit ?? "") === "1";
+  // `searchParams` may be a thenable in some Next.js runtimes — await if needed.
+  const sp = searchParams && typeof (searchParams as any).then === "function" ? await (searchParams as any) : searchParams;
+  const wantsEdit = (sp?.edit ?? "") === "1";
 
   const dbBill = await getBillById(id);
   if (!dbBill) return <div className="p-6 text-sm">Bill not found.</div>;

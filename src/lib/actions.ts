@@ -613,7 +613,8 @@ async function parseBillForm(formData: FormData, currentUserRole: "employee" | "
   const itemsJSON = (formData.get("items") as string) || "[]";
   const existingBillId = (formData.get("billId") as string) || "";
   const formatType = (formData.get("formatType") as string) || "BILL1";
-
+  
+  const supervisorId = (formData.get("supervisorId") as string) || "";
   // accept either name (old forms still OK)
   const employeeIdOrCode =
     ((formData.get("employeeIdOrCode") as string) ||
@@ -668,6 +669,7 @@ async function parseBillForm(formData: FormData, currentUserRole: "employee" | "
     amountInWords,
     totalAmount,
     items,
+    supervisorId,
   };
 }
 
@@ -792,14 +794,22 @@ if (parsed.existingBillId) {
 
   await submitDraft(parsed.existingBillId, session.user.id);
 
-  // If a supervisor submits, auto-approve to Accounts
+  // If a supervisor submits, either forward to selected supervisor or auto-approve when allowed
   if (session.user.role === "supervisor") {
-    await updateBillStatus(
-      parsed.existingBillId,
-      "APPROVED_BY_SUPERVISOR",
-      session.user.id,
-      "Auto-approved by supervisor submit"
-    );
+    if (parsed.supervisorId) {
+      await updateBillStatus(parsed.existingBillId, undefined, session.user.id, "Forwarded", parsed.supervisorId);
+    } else {
+      const auto = await shouldAutoApproveOnSubmit(session.user.id, employeeIdToUse);
+      if (auto) {
+        await updateBillStatus(
+          parsed.existingBillId,
+          "APPROVED_BY_SUPERVISOR",
+          session.user.id,
+          "Auto-approved by supervisor submit"
+        );
+      }
+      // else: leave as SUBMITTED so the employee's supervisor can act
+    }
   }
 
   revalidatePath(`/bills/${parsed.existingBillId}`);
@@ -813,6 +823,17 @@ if (parsed.items?.length) {
 }
 
     // brand-new bill
+    // determine submit context so createBill can auto-approve when allowed
+    let submitContext: any = session.user.role;
+    if (session.user.role === "supervisor") {
+      if (parsed.supervisorId) {
+        submitContext = { submittedByRole: session.user.role, submittedById: session.user.id, autoApprove: false };
+      } else {
+        const auto = await shouldAutoApproveOnSubmit(session.user.id, employeeIdToUse);
+        submitContext = { submittedByRole: session.user.role, submittedById: session.user.id, autoApprove: !!auto };
+      }
+    }
+
     const bill = await createBill(
       {
         employeeId: employeeIdToUse,
@@ -822,8 +843,13 @@ if (parsed.items?.length) {
         amountInWords: parsed.amountInWords,
         items: parsed.items,
       },
-      session.user.role
+      submitContext
     );
+
+    // If the submitting user is a supervisor and selected a supervisor, forward to them
+    if (session.user.role === "supervisor" && parsed.supervisorId) {
+      await updateBillStatus(bill.id, undefined, session.user.id, "Forwarded", parsed.supervisorId);
+    }
 
     revalidatePath(`/bills/${bill.id}`);
     revalidatePath(`/dashboard`);

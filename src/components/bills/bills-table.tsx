@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import React, { useMemo, useState } from "react";
 import type { Bill, User } from "@/lib/types";
 import {
   Table,
@@ -22,6 +25,14 @@ interface BillsTableProps {
 
 export function BillsTable({ bills, users, title, action }: BillsTableProps) {
   const userMap = new Map(users.map((user) => [user.id, user.name]));
+  const pageSize = 10;
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil((bills?.length || 0) / pageSize));
+
+  // clamp page when bills change
+  React.useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [totalPages]);
 
   return (
     <div>
@@ -44,8 +55,9 @@ export function BillsTable({ bills, users, title, action }: BillsTableProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {bills.length > 0 ? (
-              bills.map((bill) => (
+            {(bills.length || 0) > 0 ? (
+              // slice for pagination
+              bills.slice((page - 1) * pageSize, page * pageSize).map((bill) => (
                 <TableRow key={bill.id}>
                   <TableCell className="font-medium">
                     {bill.companyName}
@@ -83,6 +95,38 @@ export function BillsTable({ bills, users, title, action }: BillsTableProps) {
           </TableBody>
         </Table>
       </div>
+
+      {/* Pagination controls */}
+      {totalPages > 1 && (
+        <div className="mt-3 flex items-center justify-center gap-2">
+          <button
+            className="rounded border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+          >
+            Prev
+          </button>
+
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+            <button
+              key={p}
+              onClick={() => setPage(p)}
+              aria-current={p === page ? "page" : undefined}
+              className={`rounded border px-3 py-1 text-sm ${p === page ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            >
+              {p}
+            </button>
+          ))}
+
+          <button
+            className="rounded border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 }

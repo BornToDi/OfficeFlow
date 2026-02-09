@@ -11,14 +11,21 @@ interface SupervisorDashboardProps {
 export function SupervisorDashboard({ user, bills, users }: SupervisorDashboardProps) {
   const teamMemberIds = users.filter(u => u.supervisorId === user.id).map(e => e.id);
 
-  // Bills submitted by team members that are awaiting this supervisor's approval.
-  const pendingApprovalBills = bills.filter(
-    bill => teamMemberIds.includes(bill.employeeId) && bill.status === 'SUBMITTED'
-  );
+  // Bills awaiting supervisor approval.
+  // - If a bill has an explicit `supervisorId` (forwarded), it should appear only for that supervisor.
+  // - Otherwise, it appears for the employee's direct supervisor (i.e. members of this team) or the supervisor themselves.
+  const pendingApprovalBills = bills.filter((bill) => {
+    if (bill.status !== "SUBMITTED") return false;
+    if (bill.supervisorId) {
+      return bill.supervisorId === user.id;
+    }
+    // unassigned -> falls to the employee's supervisor (team) or the employee themself if applicable
+    return teamMemberIds.includes(bill.employeeId) || bill.employeeId === user.id;
+  });
 
   // All bills associated with the supervisor's team, including their own, for summary stats.
-  const teamAndOwnBills = bills.filter(
-    bill => teamMemberIds.includes(bill.employeeId) || bill.employeeId === user.id
+  const teamAndOwnBills = bills.filter((bill) =>
+    teamMemberIds.includes(bill.employeeId) || bill.employeeId === user.id || bill.supervisorId === user.id
   );
 
   const pendingCount = pendingApprovalBills.length;

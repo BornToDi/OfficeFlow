@@ -33,6 +33,7 @@ export function toPlainBill(bill: any) {
       ? bill.items.map((it: any) => ({
           ...it,
           date: toISO(it.date),
+          amount: it?.amount && typeof it.amount === "object" && typeof it.amount.toNumber === "function" ? Number(it.amount.toNumber()) : Number(it.amount ?? 0),
         }))
       : bill.items,
     history: Array.isArray(bill.history)
