@@ -239,6 +239,14 @@ export async function updateUserProfile(
   });
 }
 
+export async function updateUserPassword(userId: string, passwordHash: string | null) {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash },
+    select: { id: true },
+  });
+}
+
 export async function listSupervisors() {
   // return minimal supervisor list for dropdown
   const sup = await prisma.user.findMany({

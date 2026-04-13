@@ -1,5 +1,6 @@
 // src/app/settings/page.tsx
 import SettingsForm from "@/components/account/SettingsForm";
+import ChangePasswordForm from "@/components/account/ChangePasswordForm";
 import { getSession } from "@/lib/actions";
 import { listSupervisors } from "@/lib/repo";
 
@@ -24,6 +25,7 @@ export default async function SettingsPage() {
         role={session.user.role}
         supervisors={supervisors}
       />
+      <ChangePasswordForm />
     </div>
   );
 }

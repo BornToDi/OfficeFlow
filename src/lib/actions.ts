@@ -388,6 +388,8 @@ import {
   assertNoDuplicateTripsForEmployee, 
 } from "./repo";
 
+import { updateUserPassword } from "./repo";
+
 import type { Role, BillStatus } from "./types";
 import { prisma } from "./db";
 
@@ -600,6 +602,36 @@ export async function updateProfile(
     return { success: true };
   } catch (e: any) {
     return { error: e?.message || "Failed to update profile." };
+  }
+}
+
+export async function changePassword(
+  prevState: { error?: string; success?: boolean } | undefined,
+  formData: FormData
+) {
+  const session = await getSession();
+  if (!session) return { error: "Unauthorized" };
+
+  const current = (formData.get("currentPassword") as string) ?? "";
+  const password = (formData.get("newPassword") as string) ?? "";
+  const confirm = (formData.get("confirmPassword") as string) ?? "";
+
+  if (!current) return { error: "Current password is required." };
+  if (password.length < 4) return { error: "New password must be at least 4 characters." };
+  if (password !== confirm) return { error: "Passwords do not match." };
+
+  const user = await findUserById(session.user.id);
+  if (!user || !(await verifyPassword(current, (user as any).passwordHash))) {
+    return { error: "Current password is incorrect." };
+  }
+
+  try {
+    const passwordHash = await hashPassword(password);
+    await updateUserPassword(session.user.id, passwordHash);
+    revalidatePath("/settings");
+    return { success: true };
+  } catch (e: any) {
+    return { error: e?.message || "Failed to change password." };
   }
 }
 
