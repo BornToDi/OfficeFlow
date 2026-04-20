@@ -497,6 +497,7 @@ export async function register(
   const supervisorId = (formData.get("supervisorId") as string | undefined) || undefined;
 
   const designation = ((formData.get("designation") as string) ?? "").trim();
+  const department = ((formData.get("department") as string) ?? "").trim();
   const employeeCodeRaw = ((formData.get("employeeCode") as string) ?? "").trim();
   const employeeCode = employeeCodeRaw ? employeeCodeRaw.toUpperCase() : "";
 
@@ -534,6 +535,7 @@ export async function register(
       role,
       supervisorId: supervisorIdToSet,
       designation: designation || null,
+      department: department || null,
       employeeCode: employeeCode || null,
       passwordHash,
     });
@@ -582,6 +584,7 @@ export async function updateProfile(
   const name = (formData.get("name") as string)?.trim() ?? "";
   const email = (formData.get("email") as string)?.trim().toLowerCase() ?? "";
   const designation = ((formData.get("designation") as string) ?? "").trim();
+  const department = ((formData.get("department") as string) ?? "").trim();
   const supervisorIdRaw = (formData.get("supervisorId") as string) ?? "";
   const supervisorId = supervisorIdRaw === "" ? null : supervisorIdRaw;
 
@@ -593,6 +596,7 @@ export async function updateProfile(
       name,
       email,
       designation: designation || null,
+      department: department || null,
       supervisorId,
     });
 
@@ -961,10 +965,19 @@ export async function handleBillAction(
 /** Employee confirms they received the money → marks bill as PAID */
 export async function receiveMoney(billId: string) {
   const session = await getSession();
-  if (!session || session.user.role !== "employee") {
+  if (!session || (session.user.role !== "employee" && session.user.role !== "supervisor")) {
     throw new Error("Unauthorized");
   }
-  await updateBillStatus(billId, "PAID", session.user.id, "Payment confirmed by employee.");
+
+  const bill = await getBillById(billId);
+  if (!bill) throw new Error("Bill not found");
+
+  if (bill.status !== "APPROVED_BY_MANAGEMENT") {
+    throw new Error("Payment can only be confirmed after management approval.");
+  }
+
+  const actorLabel = session.user.role === "supervisor" ? "supervisor" : "employee";
+  await updateBillStatus(billId, "PAID", session.user.id, `Payment confirmed by ${actorLabel}.`);
   revalidatePath(`/bills/${billId}`);
 }
 

@@ -36,6 +36,7 @@ model User {
   role           Role          @default(employee)
   designation    String?
   employeeCode   String?       @unique
+  department     String?
   passwordHash   String? // ← ADD THIS
   supervisor     User?         @relation("SupervisorEmployees", fields: [supervisorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   supervisorId   String?

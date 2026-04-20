@@ -140,6 +140,7 @@ export async function createUser(input: {
   role: Role;
   supervisorId?: string;
   designation?: string | null;
+  department?: string | null;
   employeeCode?: string | null;
   passwordHash?: string | null;
 }) {
@@ -172,7 +173,19 @@ export async function createUser(input: {
     if (sup) data.supervisorId = sup.id;
   }
 
-  return prisma.user.create({ data });
+  const created = await prisma.user.create({ data });
+
+  // Temporary compatibility path until Prisma client is regenerated with `department`.
+  if (typeof input.department !== "undefined") {
+    const department = input.department ? input.department.trim() : null;
+    await prisma.$executeRaw`
+      UPDATE \`User\`
+      SET \`department\` = ${department}
+      WHERE \`id\` = ${created.id}
+    `;
+  }
+
+  return created;
 }
 
 export async function updateUserProfile(
@@ -181,6 +194,7 @@ export async function updateUserProfile(
     name?: string;
     email?: string;
     designation?: string | null;
+    department?: string | null;
     supervisorId?: string | null;
     employeeCode?: string | null;
   }
@@ -225,7 +239,7 @@ export async function updateUserProfile(
     }
   }
 
-  return prisma.user.update({
+  const updated = await prisma.user.update({
     where: { id: userId },
     data,
     select: {
@@ -237,6 +251,18 @@ export async function updateUserProfile(
       supervisorId: true,
     },
   });
+
+  // Temporary compatibility path until Prisma client is regenerated with `department`.
+  if (typeof input.department !== "undefined") {
+    const department = input.department ? input.department.trim() : null;
+    await prisma.$executeRaw`
+      UPDATE \`User\`
+      SET \`department\` = ${department}
+      WHERE \`id\` = ${userId}
+    `;
+  }
+
+  return updated;
 }
 
 export async function updateUserPassword(userId: string, passwordHash: string | null) {
@@ -471,7 +497,7 @@ export async function updateBillStatus(
 
 
 export async function listAllUsers() {
-  return prisma.user.findMany({
+  const users = await prisma.user.findMany({
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -483,10 +509,22 @@ export async function listAllUsers() {
       employeeCode: true,
     },
   });
+
+  // Temporary compatibility path until Prisma client is regenerated with `department`.
+  try {
+    const rows = await prisma.$queryRaw<Array<{ id: string; department: string | null }>>`
+      SELECT \`id\`, \`department\`
+      FROM \`User\`
+    `;
+    const deptById = new Map(rows.map((r) => [r.id, r.department]));
+    return users.map((u) => ({ ...u, department: deptById.get(u.id) ?? null }));
+  } catch {
+    return users.map((u) => ({ ...u, department: null }));
+  }
 }
 
 export async function listAllBills() {
-  return prisma.bill.findMany({
+  const bills = await prisma.bill.findMany({
     orderBy: { createdAt: "desc" },
     include: {
       employee: {
@@ -504,6 +542,26 @@ export async function listAllBills() {
       history: true,
     },
   });
+
+  // Temporary compatibility path until Prisma client is regenerated with `department`.
+  try {
+    const rows = await prisma.$queryRaw<Array<{ id: string; department: string | null }>>`
+      SELECT \`id\`, \`department\`
+      FROM \`User\`
+    `;
+    const deptById = new Map(rows.map((r) => [r.id, r.department]));
+    return bills.map((b) => ({
+      ...b,
+      employee: b.employee
+        ? { ...b.employee, department: deptById.get(b.employee.id) ?? null }
+        : b.employee,
+    }));
+  } catch {
+    return bills.map((b) => ({
+      ...b,
+      employee: b.employee ? { ...b.employee, department: null } : b.employee,
+    }));
+  }
 }
 
 /* ========== DRAFTS ========== */
@@ -764,7 +822,6 @@ export async function getBillsForRole(user: { id: string; role: Role }) {
       });
   }
 }
-import type { Role } from "./types";
 
 /** Sidebar badge: pending items count for the current user/role */
 export async function pendingCountForUser(user: { id: string; role: Role }) {

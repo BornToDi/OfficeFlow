@@ -20,6 +20,7 @@ export interface User {
   role: Role;
   supervisorId?: string | null;
   designation?: string | null;
+  department?: string | null;
 
   /** The human-visible ID you typed during registration (e.g., EMP-001). */
   employeeCode?: string | null; // 👈 add this so Bill form can auto-show it

@@ -118,6 +118,8 @@ export default async function BillDetail({
   const hasPaymentRequest = dbBill.history.some((h) =>
     (h.comment ?? "").toLowerCase().includes("payment requested from employee")
   );
+  const billId = dbBill.id;
+  const billStatus = dbBill.status;
 
   /* -------------------------- server actions -------------------------- */
 
@@ -133,18 +135,18 @@ async function approveOrForward(formData: FormData) {
   if (action === "approve") {
     if (nextSupervisorId) {
       // forward to another supervisor
-      await updateBillStatus(dbBill.id, undefined, sessionNow.user.id, "Forwarded", nextSupervisorId);
+      await updateBillStatus(billId, undefined, sessionNow.user.id, "Forwarded", nextSupervisorId);
     } else {
       // normal approve to next stage
-      const next = nextStatusForRole(dbBill.status, sessionNow.user.role); // your existing helper
-      await updateBillStatus(dbBill.id, next, sessionNow.user.id, "Approved");
+      const next = nextStatusForRole(billStatus, sessionNow.user.role); // your existing helper
+      await updateBillStatus(billId, next, sessionNow.user.id, "Approved");
     }
   } else if (action === "reject") {
     const reason = (formData.get("comment") as string) || "Rejected";
-    await updateBillStatus(dbBill.id, rejectStatusForRole(sessionNow.user.role), sessionNow.user.id, reason);
+    await updateBillStatus(billId, rejectedStatusForRole(sessionNow.user.role), sessionNow.user.id, reason);
   }
 
-  revalidatePath(`/bills/${dbBill.id}`);
+  revalidatePath(`/bills/${billId}`);
 }
 
 
@@ -346,17 +348,14 @@ async function approveOrForward(formData: FormData) {
           {/* ACCOUNTS: payment request */}
           {role === "accounts" && dbBill.status === "APPROVED_BY_MANAGEMENT" && (
             <div>
-              <RequestReceiptButton billId={dbBill.id} />
-              {hasPaymentRequest && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Payment request already sent — waiting for employee confirmation.
-                </p>
-              )}
+              <RequestReceiptButton billId={dbBill.id} hasPaymentRequest={hasPaymentRequest} />
             </div>
           )}
 
-          {/* EMPLOYEE: confirm receive */}
-          {role === "employee" && dbBill.status === "APPROVED_BY_MANAGEMENT" && hasPaymentRequest && (
+          {/* EMPLOYEE/SUPERVISOR: confirm receive */}
+          {(role === "employee" || role === "supervisor") &&
+            dbBill.status === "APPROVED_BY_MANAGEMENT" &&
+            hasPaymentRequest && (
             <ConfirmReceiveButton billId={dbBill.id} />
           )}
         </section>

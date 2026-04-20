@@ -36,6 +36,7 @@ const schema = z
       required_error: "Pick a role",
     }),
     designation: z.string().optional(),
+    department: z.string().optional(),
     employeeCode: z.string().optional(),
     supervisorId: z.string().optional(),
     password: z.string().min(4, "Password must be at least 4 characters"),
@@ -49,6 +50,13 @@ const schema = z
           code: z.ZodIssueCode.custom,
           message: "Designation is required",
           path: ["designation"],
+        });
+      }
+      if (!val.department || val.department.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Department is required",
+          path: ["department"],
         });
       }
       if (!val.employeeCode || val.employeeCode.trim() === "") {
@@ -90,6 +98,7 @@ export function RegistrationForm({ supervisors }: { supervisors: Supervisor[] })
       email: "",
       role: "employee",
       designation: "",
+      department: "",
       employeeCode: "",
       supervisorId: "",
       password: "",
@@ -111,6 +120,7 @@ export function RegistrationForm({ supervisors }: { supervisors: Supervisor[] })
     fd.append("email", values.email.toLowerCase());
     fd.append("role", values.role);
     fd.append("designation", values.designation ?? "");
+    fd.append("department", values.department ?? "");
     // Ensure UPPERCASE is sent to the server
     fd.append("employeeCode", (values.employeeCode ?? "").toUpperCase());
     fd.append("supervisorId", values.supervisorId ?? "");
@@ -211,9 +221,24 @@ export function RegistrationForm({ supervisors }: { supervisors: Supervisor[] })
               )}
             </div>
 
+            {/* Department */}
+            <div className="space-y-2">
+              <Label htmlFor="department">Department</Label>
+              <Input
+                id="department"
+                placeholder="e.g. Engineering, Sales, HR"
+                disabled={disabled}
+                {...form.register("department")}
+              />
+              {form.formState.errors.department && (
+                <p className="text-xs text-red-600">
+                  {form.formState.errors.department.message}
+                </p>
+              )}
+            </div>
+
             {/* Employee Code (forced uppercase + live preview) */}
             <div className="space-y-2">
-              <Label htmlFor="employeeCode">Employee Code</Label>
               <Input
                 id="employeeCode"
                 placeholder="e.g. EMP-123"

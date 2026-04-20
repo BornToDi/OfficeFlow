@@ -21,10 +21,12 @@ interface BillsTableProps {
   users: User[];
   title: string;
   action?: React.ReactNode;
+  showDepartment?: boolean;
 }
 
-export function BillsTable({ bills, users, title, action }: BillsTableProps) {
+export function BillsTable({ bills, users, title, action, showDepartment = false }: BillsTableProps) {
   const userMap = new Map(users.map((user) => [user.id, user.name]));
+  const userDepartmentMap = new Map(users.map((user) => [user.id, user.department ?? "N/A"]));
   const pageSize = 10;
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil((bills?.length || 0) / pageSize));
@@ -50,6 +52,7 @@ export function BillsTable({ bills, users, title, action }: BillsTableProps) {
               <TableHead>Amount</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Submitted By</TableHead>
+              {showDepartment && <TableHead>Department</TableHead>}
               <TableHead>Date</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -73,6 +76,7 @@ export function BillsTable({ bills, users, title, action }: BillsTableProps) {
                     <StatusBadge status={bill.status} />
                   </TableCell>
                   <TableCell>{userMap.get(bill.employeeId) || "Unknown"}</TableCell>
+                  {showDepartment && <TableCell>{userDepartmentMap.get(bill.employeeId) || "N/A"}</TableCell>}
                   <TableCell><ClientDate dateString={bill.createdAt} format="date" /></TableCell>
                   <TableCell className="text-right">
                     <Button asChild variant="ghost" size="icon">
@@ -87,7 +91,7 @@ export function BillsTable({ bills, users, title, action }: BillsTableProps) {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className="text-center">
+                <TableCell colSpan={showDepartment ? 7 : 6} className="text-center">
                   No bills found.
                 </TableCell>
               </TableRow>

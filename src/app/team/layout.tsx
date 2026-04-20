@@ -2,14 +2,13 @@ import { getSession } from "@/lib/actions";
 import { redirect } from "next/navigation";
 import {
   SidebarProvider, Sidebar, SidebarMenu, SidebarMenuItem, SidebarMenuButton,
-  SidebarHeader, SidebarContent, SidebarFooter, SidebarInset, SidebarGroup, SidebarMenuBadge
+  SidebarHeader, SidebarContent, SidebarFooter, SidebarInset, SidebarGroup
 } from "@/components/ui/sidebar";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, LayoutGrid, FileText, BarChart, Users, Settings } from "lucide-react";
 import Link from "next/link";
 import { Logo } from "@/components/logo";
-import { pendingCountForUser } from "@/lib/repo"; // ← DB-backed helper
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -17,8 +16,6 @@ export const revalidate = 0;
 export default async function TeamLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
   if (!session) redirect("/");
-
-  const pendingCount = await pendingCountForUser(session.user);
 
   return (
     <SidebarProvider>
@@ -51,7 +48,6 @@ export default async function TeamLayout({ children }: { children: React.ReactNo
                   Bills
                 </Link>
               </SidebarMenuButton>
-              {pendingCount > 0 && <SidebarMenuBadge>{pendingCount}</SidebarMenuBadge>}
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton asChild tooltip="Reports">

@@ -16,6 +16,8 @@ import { Separator } from "@/components/ui/separator";
 const schema = z.object({
   name: z.string().min(1, "Name is required."),
   email: z.string().email("Enter a valid email."),
+  designation: z.string().optional(),
+  department: z.string().optional(),
   supervisorId: z.string().optional(), // empty string = clear
 });
 
@@ -28,7 +30,7 @@ export default function SettingsForm({
   role,
   supervisors,
 }: {
-  user: { id: string; name: string; email: string; supervisorId?: string | null };
+  user: { id: string; name: string; email: string; designation?: string | null; department?: string | null; supervisorId?: string | null };
   role: Role;
   supervisors: Supervisor[];
 }) {
@@ -40,6 +42,8 @@ export default function SettingsForm({
     defaultValues: {
       name: user.name,
       email: user.email,
+      designation: user.designation ?? "",
+      department: user.department ?? "",
       supervisorId: user.supervisorId ?? "",
     },
     mode: "onChange",
@@ -50,50 +54,68 @@ export default function SettingsForm({
       const fd = new FormData();
       fd.append("name", values.name);
       fd.append("email", values.email);
+      fd.append("designation", values.designation ?? "");
+      fd.append("department", values.department ?? "");
       fd.append("supervisorId", values.supervisorId ?? "");
       formAction(fd);
     });
   };
 
   return (
-    <div className="max-w-2xl">
-      <div className="rounded-2xl border bg-white p-6 shadow-sm">
-        <h1 className="text-xl font-semibold">Profile Settings</h1>
-        <p className="text-sm text-muted-foreground">
+    <div className="w-full">
+      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-2xl font-bold text-slate-900">Profile Settings</h2>
+        <p className="mt-1 text-sm text-slate-600">
           Update your basic info. Employees can also set their supervisor.
         </p>
 
-        <Separator className="my-4" />
+        <Separator className="my-5" />
 
         <form
           onSubmit={form.handleSubmit(onSubmit)}
-          className="grid gap-4"
+          className="space-y-5"
         >
           <div className="grid gap-2">
-            <label className="text-sm font-medium" htmlFor="name">Name</label>
-            <Input id="name" {...form.register("name")} />
+            <label className="text-sm font-semibold text-slate-700" htmlFor="name">Full Name</label>
+            <Input id="name" placeholder="Your full name" {...form.register("name")} className="border-slate-300 focus-visible:ring-blue-400" />
             {form.formState.errors.name && (
-              <p className="text-xs text-destructive">{form.formState.errors.name.message}</p>
+              <p className="text-xs text-red-600">{form.formState.errors.name.message}</p>
             )}
           </div>
 
           <div className="grid gap-2">
-            <label className="text-sm font-medium" htmlFor="email">Email</label>
-            <Input id="email" type="email" {...form.register("email")} />
+            <label className="text-sm font-semibold text-slate-700" htmlFor="email">Email Address</label>
+            <Input id="email" type="email" placeholder="your.email@company.com" {...form.register("email")} className="border-slate-300 focus-visible:ring-blue-400" />
             {form.formState.errors.email && (
-              <p className="text-xs text-destructive">{form.formState.errors.email.message}</p>
+              <p className="text-xs text-red-600">{form.formState.errors.email.message}</p>
+            )}
+          </div>
+
+          <div className="grid gap-2">
+            <label className="text-sm font-semibold text-slate-700" htmlFor="designation">Designation</label>
+            <Input id="designation" placeholder="e.g. Senior Engineer" {...form.register("designation")} className="border-slate-300 focus-visible:ring-blue-400" />
+            {form.formState.errors.designation && (
+              <p className="text-xs text-red-600">{form.formState.errors.designation.message}</p>
+            )}
+          </div>
+
+          <div className="grid gap-2">
+            <label className="text-sm font-semibold text-slate-700" htmlFor="department">Department</label>
+            <Input id="department" placeholder="e.g. Engineering, Sales, HR" {...form.register("department")} className="border-slate-300 focus-visible:ring-blue-400" />
+            {form.formState.errors.department && (
+              <p className="text-xs text-red-600">{form.formState.errors.department.message}</p>
             )}
           </div>
 
           {role === "employee" && (
             <div className="grid gap-2">
-              <label className="text-sm font-medium" htmlFor="supervisorId">Supervisor</label>
+              <label className="text-sm font-semibold text-slate-700" htmlFor="supervisorId">Supervisor</label>
               <select
                 id="supervisorId"
-                className="h-9 rounded-md border bg-background px-3 text-sm"
+                className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition-colors focus-visible:ring-2 focus-visible:ring-blue-400"
                 {...form.register("supervisorId")}
               >
-                <option value="">— None —</option>
+                <option value="">— Choose supervisor —</option>
                 {supervisors.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name} ({s.email})
@@ -101,7 +123,7 @@ export default function SettingsForm({
                 ))}
               </select>
               {form.formState.errors.supervisorId && (
-                <p className="text-xs text-destructive">
+                <p className="text-xs text-red-600">
                   {form.formState.errors.supervisorId.message as string}
                 </p>
               )}
@@ -109,19 +131,19 @@ export default function SettingsForm({
           )}
 
           {state?.error && (
-            <Alert variant="destructive">
-              <AlertDescription>{state.error}</AlertDescription>
+            <Alert variant="destructive" className="border-red-300 bg-red-50">
+              <AlertDescription className="text-red-800">{state.error}</AlertDescription>
             </Alert>
           )}
           {state?.success && (
-            <Alert>
-              <AlertDescription>Profile updated successfully.</AlertDescription>
+            <Alert className="border-green-300 bg-green-50">
+              <AlertDescription className="text-green-800">Profile updated successfully.</AlertDescription>
             </Alert>
           )}
 
           <div className="pt-2">
-            <Button type="submit" disabled={isPending}>
-              {isPending ? "Saving..." : "Save changes"}
+            <Button type="submit" disabled={isPending} className="bg-blue-600 hover:bg-blue-700">
+              {isPending ? "Saving..." : "Save Changes"}
             </Button>
           </div>
         </form>

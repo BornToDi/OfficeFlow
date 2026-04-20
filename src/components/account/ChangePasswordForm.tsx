@@ -42,52 +42,52 @@ export default function ChangePasswordForm() {
   };
 
   return (
-    <div className="max-w-2xl mt-6">
-      <div className="rounded-2xl border bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold">Change Password</h2>
-        <p className="text-sm text-muted-foreground">Update your account password. Current password required.</p>
+    <div className="w-full">
+      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-2xl font-bold text-slate-900">Change Password</h2>
+        <p className="mt-1 text-sm text-slate-600">Update your account password. Current password required for security.</p>
 
-        <Separator className="my-4" />
+        <Separator className="my-5" />
 
-        <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
           <div className="grid gap-2">
-            <label className="text-sm font-medium" htmlFor="currentPassword">Current password</label>
-            <Input id="currentPassword" type="password" {...form.register("currentPassword")} />
+            <label className="text-sm font-semibold text-slate-700" htmlFor="currentPassword">Current Password</label>
+            <Input id="currentPassword" type="password" placeholder="••••••••" {...form.register("currentPassword")} className="border-slate-300 focus-visible:ring-amber-400" />
             {form.formState.errors.currentPassword && (
-              <p className="text-xs text-destructive">{form.formState.errors.currentPassword.message as string}</p>
+              <p className="text-xs text-red-600">{form.formState.errors.currentPassword.message as string}</p>
             )}
           </div>
 
           <div className="grid gap-2">
-            <label className="text-sm font-medium" htmlFor="newPassword">New password</label>
-            <Input id="newPassword" type="password" {...form.register("newPassword")} />
+            <label className="text-sm font-semibold text-slate-700" htmlFor="newPassword">New Password</label>
+            <Input id="newPassword" type="password" placeholder="••••••••" {...form.register("newPassword")} className="border-slate-300 focus-visible:ring-amber-400" />
             {form.formState.errors.newPassword && (
-              <p className="text-xs text-destructive">{form.formState.errors.newPassword.message as string}</p>
+              <p className="text-xs text-red-600">{form.formState.errors.newPassword.message as string}</p>
             )}
           </div>
 
           <div className="grid gap-2">
-            <label className="text-sm font-medium" htmlFor="confirmPassword">Confirm new password</label>
-            <Input id="confirmPassword" type="password" {...form.register("confirmPassword")} />
+            <label className="text-sm font-semibold text-slate-700" htmlFor="confirmPassword">Confirm New Password</label>
+            <Input id="confirmPassword" type="password" placeholder="••••••••" {...form.register("confirmPassword")} className="border-slate-300 focus-visible:ring-amber-400" />
             {form.formState.errors.confirmPassword && (
-              <p className="text-xs text-destructive">{form.formState.errors.confirmPassword.message as string}</p>
+              <p className="text-xs text-red-600">{form.formState.errors.confirmPassword.message as string}</p>
             )}
           </div>
 
           {state?.error && (
-            <Alert variant="destructive">
-              <AlertDescription>{state.error}</AlertDescription>
+            <Alert variant="destructive" className="border-red-300 bg-red-50">
+              <AlertDescription className="text-red-800">{state.error}</AlertDescription>
             </Alert>
           )}
           {state?.success && (
-            <Alert>
-              <AlertDescription>Password changed successfully.</AlertDescription>
+            <Alert className="border-green-300 bg-green-50">
+              <AlertDescription className="text-green-800">Password changed successfully.</AlertDescription>
             </Alert>
           )}
 
           <div className="pt-2">
-            <Button type="submit" disabled={isPending}>
-              {isPending ? "Saving..." : "Change password"}
+            <Button type="submit" disabled={isPending} className="bg-amber-600 hover:bg-amber-700">
+              {isPending ? "Saving..." : "Change Password"}
             </Button>
           </div>
         </form>

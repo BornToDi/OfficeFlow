@@ -1,6 +1,10 @@
+"use client";
+
+import { useMemo, useState } from "react";
 import type { Bill, User } from "@/lib/types";
 import { BillsTable } from "../bills/bills-table";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { Button } from "../ui/button";
 
 interface SupervisorDashboardProps {
   user: User;
@@ -9,6 +13,7 @@ interface SupervisorDashboardProps {
 }
 
 export function SupervisorDashboard({ user, bills, users }: SupervisorDashboardProps) {
+  const [billScope, setBillScope] = useState<"all" | "mine">("all");
   const teamMemberIds = users.filter(u => u.supervisorId === user.id).map(e => e.id);
 
   // Bills awaiting supervisor approval.
@@ -27,6 +32,13 @@ export function SupervisorDashboard({ user, bills, users }: SupervisorDashboardP
   const teamAndOwnBills = bills.filter((bill) =>
     teamMemberIds.includes(bill.employeeId) || bill.employeeId === user.id || bill.supervisorId === user.id
   );
+  const filteredTeamBills = useMemo(() => {
+    if (billScope === "mine") {
+      return teamAndOwnBills.filter((bill) => bill.employeeId === user.id);
+    }
+    return teamAndOwnBills;
+  }, [billScope, teamAndOwnBills, user.id]);
+  const recentTeamBills = filteredTeamBills.slice(0, 10);
 
   const pendingCount = pendingApprovalBills.length;
   const approvedCount = teamAndOwnBills.filter(bill => bill.status.startsWith('APPROVED')).length;
@@ -86,6 +98,27 @@ export function SupervisorDashboard({ user, bills, users }: SupervisorDashboardP
       </div>
 
       <BillsTable bills={pendingApprovalBills} users={users} title="Bills Awaiting Your Approval" />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant={billScope === "all" ? "default" : "outline"}
+          onClick={() => setBillScope("all")}
+        >
+          All Team Bills
+        </Button>
+        <Button
+          variant={billScope === "mine" ? "default" : "outline"}
+          onClick={() => setBillScope("mine")}
+        >
+          My Bills
+        </Button>
+      </div>
+
+      <BillsTable
+        bills={recentTeamBills}
+        users={users}
+        title={billScope === "mine" ? "My Recent Bills" : "Recent Team Bills"}
+      />
     </div>
   );
 }

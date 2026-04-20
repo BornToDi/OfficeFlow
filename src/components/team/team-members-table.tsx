@@ -25,6 +25,7 @@ export function TeamMembersTable({ users, allUsers }: TeamMembersTableProps) {
         <TableHeader>
           <TableRow>
             <TableHead>Name</TableHead>
+            <TableHead>Employee ID</TableHead>
             <TableHead>Role</TableHead>
             <TableHead>Designation</TableHead>
             <TableHead>Supervisor</TableHead>
@@ -48,6 +49,7 @@ export function TeamMembersTable({ users, allUsers }: TeamMembersTableProps) {
                        </div>
                     </div>
                   </TableCell>
+                  <TableCell>{user.employeeCode || "N/A"}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className="capitalize">{user.role}</Badge>
                   </TableCell>
@@ -58,7 +60,7 @@ export function TeamMembersTable({ users, allUsers }: TeamMembersTableProps) {
             })
           ) : (
             <TableRow>
-              <TableCell colSpan={4} className="text-center">
+              <TableCell colSpan={5} className="text-center">
                 No team members found.
               </TableCell>
             </TableRow>

@@ -47,16 +47,41 @@ export function AccountsDashboard({ user, bills, users }: AccountsDashboardProps
   const countPaid = allPaidBills.length;
   const countAll = allBills.length;
 
-  // Paid tab search
+  // Get unique departments only for paid bills
+  const uniqueDepartments = useMemo(() => {
+    const paidEmployeeIds = new Set(allPaidBills.map((b) => b.employeeId));
+    const depts = new Set(
+      users
+        .filter((u) => paidEmployeeIds.has(u.id))
+        .map((u) => u.department)
+        .filter((d): d is string => Boolean(d))
+    );
+    return Array.from(depts).sort();
+  }, [allPaidBills, users]);
+
+  // Paid tab search and department filter
   const [paidSearchTerm, setPaidSearchTerm] = useState("");
+  const [paidDepartmentFilter, setPaidDepartmentFilter] = useState("all");
+  
   const filteredPaidBills = useMemo(() => {
-    if (!paidSearchTerm) return allPaidBills;
+    let filtered = allPaidBills;
+    
+    // Department filter
+    if (paidDepartmentFilter !== "all") {
+      filtered = filtered.filter((bill) => {
+        const employee = users.find(u => u.id === bill.employeeId);
+        return employee?.department === paidDepartmentFilter;
+      });
+    }
+    
+    // Search filter
+    if (!paidSearchTerm) return filtered;
     const q = paidSearchTerm.toLowerCase();
-    return allPaidBills.filter((bill) => {
+    return filtered.filter((bill) => {
       const employeeName = userMap.get(bill.employeeId) || "";
       return employeeName.toLowerCase().includes(q);
     });
-  }, [allPaidBills, paidSearchTerm, userMap]);
+  }, [allPaidBills, paidSearchTerm, paidDepartmentFilter, userMap, users]);
 
   // Little badge renderer
   const Badge = ({ n }: { n: number }) => (
@@ -118,7 +143,19 @@ export function AccountsDashboard({ user, bills, users }: AccountsDashboardProps
         <TabsContent value="paid" className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-2xl font-semibold">Paid Bills</h2>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <select
+                value={paidDepartmentFilter}
+                onChange={(e) => setPaidDepartmentFilter(e.target.value)}
+                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition-colors focus-visible:ring-2 focus-visible:ring-blue-400"
+              >
+                <option value="all">All Departments</option>
+                {uniqueDepartments.map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
+                  </option>
+                ))}
+              </select>
               <Input
                 placeholder="Search by employee name..."
                 value={paidSearchTerm}
@@ -129,7 +166,7 @@ export function AccountsDashboard({ user, bills, users }: AccountsDashboardProps
             </div>
           </div>
 
-          <BillsTable bills={filteredPaidBills} users={users} title="" />
+          <BillsTable bills={filteredPaidBills} users={users} title="" showDepartment />
         </TabsContent>
 
         <TabsContent value="all-bills">
