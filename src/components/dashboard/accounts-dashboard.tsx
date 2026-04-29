@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import type { Bill, User } from "@/lib/types";
-import { BillsTable } from "../bills/bills-table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BillsTable } from "../bills/bills-table";
 import { ExportButton } from "../export/export-button";
-import { Input } from "@/components/ui/input";
+import { PaidBillsAnalytics } from "./paid-bills-analytics";
 
 /**
  * IMPORTANT: `bills` and `users` must be plain/serializable (no Prisma Decimal/Date objects).
@@ -20,9 +20,6 @@ interface AccountsDashboardProps {
 }
 
 export function AccountsDashboard({ user, bills, users }: AccountsDashboardProps) {
-  // Build a map for quick employee name lookup
-  const userMap = useMemo(() => new Map(users.map((u) => [u.id, u.name])), [users]);
-
   // Buckets
   const pendingApprovalBills = useMemo(
     () => bills.filter((b) => b.status === "APPROVED_BY_SUPERVISOR"),
@@ -47,42 +44,6 @@ export function AccountsDashboard({ user, bills, users }: AccountsDashboardProps
   const countPaid = allPaidBills.length;
   const countAll = allBills.length;
 
-  // Get unique departments only for paid bills
-  const uniqueDepartments = useMemo(() => {
-    const paidEmployeeIds = new Set(allPaidBills.map((b) => b.employeeId));
-    const depts = new Set(
-      users
-        .filter((u) => paidEmployeeIds.has(u.id))
-        .map((u) => u.department)
-        .filter((d): d is string => Boolean(d))
-    );
-    return Array.from(depts).sort();
-  }, [allPaidBills, users]);
-
-  // Paid tab search and department filter
-  const [paidSearchTerm, setPaidSearchTerm] = useState("");
-  const [paidDepartmentFilter, setPaidDepartmentFilter] = useState("all");
-  
-  const filteredPaidBills = useMemo(() => {
-    let filtered = allPaidBills;
-    
-    // Department filter
-    if (paidDepartmentFilter !== "all") {
-      filtered = filtered.filter((bill) => {
-        const employee = users.find(u => u.id === bill.employeeId);
-        return employee?.department === paidDepartmentFilter;
-      });
-    }
-    
-    // Search filter
-    if (!paidSearchTerm) return filtered;
-    const q = paidSearchTerm.toLowerCase();
-    return filtered.filter((bill) => {
-      const employeeName = userMap.get(bill.employeeId) || "";
-      return employeeName.toLowerCase().includes(q);
-    });
-  }, [allPaidBills, paidSearchTerm, paidDepartmentFilter, userMap, users]);
-
   // Little badge renderer
   const Badge = ({ n }: { n: number }) => (
     <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-xs font-semibold">
@@ -95,17 +56,29 @@ export function AccountsDashboard({ user, bills, users }: AccountsDashboardProps
       <h1 className="text-3xl font-bold">Accounts Department</h1>
 
       <Tabs defaultValue="pending-approval">
-        <TabsList className="flex flex-wrap gap-2">
-          <TabsTrigger value="pending-approval">
+        <TabsList className="flex h-auto flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-md shadow-slate-900/5">
+          <TabsTrigger
+            value="pending-approval"
+            className="border border-transparent bg-white text-slate-900 data-[state=active]:border-primary data-[state=active]:bg-slate-100 data-[state=active]:text-slate-950"
+          >
             Pending Approval <Badge n={countPendingApproval} />
           </TabsTrigger>
-          <TabsTrigger value="pending-payment">
+          <TabsTrigger
+            value="pending-payment"
+            className="border border-transparent bg-white text-slate-900 data-[state=active]:border-primary data-[state=active]:bg-slate-100 data-[state=active]:text-slate-950"
+          >
             Pending Payment <Badge n={countPendingPayment} />
           </TabsTrigger>
-          <TabsTrigger value="paid">
+          <TabsTrigger
+            value="paid"
+            className="border border-transparent bg-white text-slate-900 data-[state=active]:border-primary data-[state=active]:bg-slate-100 data-[state=active]:text-slate-950"
+          >
             Paid <Badge n={countPaid} />
           </TabsTrigger>
-          <TabsTrigger value="all-bills">
+          <TabsTrigger
+            value="all-bills"
+            className="border border-transparent bg-white text-slate-900 data-[state=active]:border-primary data-[state=active]:bg-slate-100 data-[state=active]:text-slate-950"
+          >
             All Bills History <Badge n={countAll} />
           </TabsTrigger>
         </TabsList>
@@ -141,32 +114,12 @@ export function AccountsDashboard({ user, bills, users }: AccountsDashboardProps
         </TabsContent>
 
         <TabsContent value="paid" className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-2xl font-semibold">Paid Bills</h2>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <select
-                value={paidDepartmentFilter}
-                onChange={(e) => setPaidDepartmentFilter(e.target.value)}
-                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition-colors focus-visible:ring-2 focus-visible:ring-blue-400"
-              >
-                <option value="all">All Departments</option>
-                {uniqueDepartments.map((dept) => (
-                  <option key={dept} value={dept}>
-                    {dept}
-                  </option>
-                ))}
-              </select>
-              <Input
-                placeholder="Search by employee name..."
-                value={paidSearchTerm}
-                onChange={(e) => setPaidSearchTerm(e.target.value)}
-                className="max-w-sm"
-              />
-              <ExportButton bills={filteredPaidBills} users={users} fileName="Paid_Bills" />
-            </div>
-          </div>
-
-          <BillsTable bills={filteredPaidBills} users={users} title="" showDepartment />
+          <PaidBillsAnalytics
+            title="Paid Bills"
+            bills={allPaidBills}
+            users={users}
+            exportFileName="Paid_Bills"
+          />
         </TabsContent>
 
         <TabsContent value="all-bills">

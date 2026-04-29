@@ -30,10 +30,12 @@ function getStatusCounts(bills: Bill[]) {
 }
 
 export function EmployeeDashboard({ user, bills, users }: EmployeeDashboardProps) {
-  const myBills = bills.filter((bill) => bill.employeeId === user.id);
+  const myBills = bills.filter((bill) => String(bill.employeeId) === String(user.id));
   const counts = getStatusCounts(myBills);
   const recentBills = myBills.slice(0, 5);
-  const myPaidAmount = myBills.filter(b => b.status === 'PAID').reduce((acc, b) => acc + b.amount, 0);
+  const myPaidAmount = myBills
+    .filter((b) => b.status === "PAID")
+    .reduce((acc, b) => acc + Number(b.amount ?? 0), 0);
 
   return (
     <div className="space-y-6">

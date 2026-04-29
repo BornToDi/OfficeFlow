@@ -14,7 +14,9 @@ interface SupervisorDashboardProps {
 
 export function SupervisorDashboard({ user, bills, users }: SupervisorDashboardProps) {
   const [billScope, setBillScope] = useState<"all" | "mine">("all");
-  const teamMemberIds = users.filter(u => u.supervisorId === user.id).map(e => e.id);
+  const teamMemberIds = users
+    .filter((u) => String(u.supervisorId) === String(user.id))
+    .map((e) => String(e.id));
 
   // Bills awaiting supervisor approval.
   // - If a bill has an explicit `supervisorId` (forwarded), it should appear only for that supervisor.
@@ -22,19 +24,21 @@ export function SupervisorDashboard({ user, bills, users }: SupervisorDashboardP
   const pendingApprovalBills = bills.filter((bill) => {
     if (bill.status !== "SUBMITTED") return false;
     if (bill.supervisorId) {
-      return bill.supervisorId === user.id;
+      return String(bill.supervisorId) === String(user.id);
     }
     // unassigned -> falls to the employee's supervisor (team) or the employee themself if applicable
-    return teamMemberIds.includes(bill.employeeId) || bill.employeeId === user.id;
+    return teamMemberIds.includes(String(bill.employeeId)) || String(bill.employeeId) === String(user.id);
   });
 
   // All bills associated with the supervisor's team, including their own, for summary stats.
   const teamAndOwnBills = bills.filter((bill) =>
-    teamMemberIds.includes(bill.employeeId) || bill.employeeId === user.id || bill.supervisorId === user.id
+    teamMemberIds.includes(String(bill.employeeId)) ||
+    String(bill.employeeId) === String(user.id) ||
+    String(bill.supervisorId) === String(user.id)
   );
   const filteredTeamBills = useMemo(() => {
     if (billScope === "mine") {
-      return teamAndOwnBills.filter((bill) => bill.employeeId === user.id);
+      return teamAndOwnBills.filter((bill) => String(bill.employeeId) === String(user.id));
     }
     return teamAndOwnBills;
   }, [billScope, teamAndOwnBills, user.id]);
@@ -43,7 +47,9 @@ export function SupervisorDashboard({ user, bills, users }: SupervisorDashboardP
   const pendingCount = pendingApprovalBills.length;
   const approvedCount = teamAndOwnBills.filter(bill => bill.status.startsWith('APPROVED')).length;
   const rejectedCount = teamAndOwnBills.filter(bill => bill.status.startsWith('REJECTED')).length;
-  const totalPaidAmount = teamAndOwnBills.filter(b => b.status === 'PAID').reduce((acc, b) => acc + b.amount, 0);
+  const totalPaidAmount = teamAndOwnBills
+    .filter((b) => b.status === "PAID")
+    .reduce((acc, b) => acc + Number(b.amount ?? 0), 0);
 
   return (
     <div className="space-y-6">
