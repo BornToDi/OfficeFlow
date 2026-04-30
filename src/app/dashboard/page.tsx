@@ -43,6 +43,12 @@ export default async function DashboardPage() {
           <AccountsDashboard user={user} bills={bills} users={users} />
         </div>
       );
+    case "followup":
+      return (
+        <div className="container mx-auto">
+          <AccountsDashboard user={user} bills={bills} users={users} heading="Follow-up User" />
+        </div>
+      );
     case "management":
       return (
         <div className="container mx-auto">

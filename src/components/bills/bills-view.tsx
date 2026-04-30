@@ -67,7 +67,7 @@ export function BillsView({ initialBills, users, isSupervisor }: Props) {
           .toLowerCase()
           .includes(query);
         const itemsHit = (b.items || []).some((it) =>
-          `${it.purpose} ${it.from} ${it.to}`.toLowerCase().includes(query)
+          `${it.incident ?? ""} ${it.purpose} ${it.from} ${it.to}`.toLowerCase().includes(query)
         );
         return idHit || empHit || companyHit || itemsHit;
       });
@@ -81,7 +81,7 @@ export function BillsView({ initialBills, users, isSupervisor }: Props) {
       <Input
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Search id, employee, company, purpose..."
+        placeholder="Search id, employee, company, incident, purpose..."
         className="w-64"
         aria-label="Search bills"
       />

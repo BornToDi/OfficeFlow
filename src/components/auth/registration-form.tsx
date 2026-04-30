@@ -32,7 +32,7 @@ const schema = z
   .object({
     name: z.string().min(1, "Name is required"),
     email: z.string().email("Enter a valid email"),
-    role: z.enum(["employee", "supervisor", "accounts", "management"], {
+    role: z.enum(["employee", "supervisor", "accounts", "management", "followup"], {
       required_error: "Pick a role",
     }),
     designation: z.string().optional(),
@@ -193,6 +193,7 @@ export function RegistrationForm({ supervisors }: { supervisors: Supervisor[] })
               <SelectItem value="supervisor">Supervisor</SelectItem>
               <SelectItem value="accounts">Accounts</SelectItem>
               <SelectItem value="management">Management</SelectItem>
+              <SelectItem value="followup">Follow-up</SelectItem>
             </SelectContent>
           </Select>
           {form.formState.errors.role && (

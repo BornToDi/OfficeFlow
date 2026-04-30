@@ -24,14 +24,16 @@ export default async function TeamLayout({ children }: { children: React.ReactNo
           <Logo />
         </SidebarHeader>
         <SidebarContent>
-          <SidebarGroup>
-            <Button asChild className="w-full justify-start" size="lg">
-              <Link href="/bills/new">
-                <PlusCircle />
-                New Bill
-              </Link>
-            </Button>
-          </SidebarGroup>
+          {(["employee", "supervisor"] as const).includes(session.user.role as any) && (
+            <SidebarGroup>
+              <Button asChild className="w-full justify-start" size="lg">
+                <Link href="/bills/new">
+                  <PlusCircle />
+                  New Bill
+                </Link>
+              </Button>
+            </SidebarGroup>
+          )}
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton asChild tooltip="Dashboard">

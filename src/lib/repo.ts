@@ -802,6 +802,7 @@ export async function getBillsForRole(user: { id: string; role: Role }) {
     case "accounts":
     case "management":
     default:
+    case "followup":
       return prisma.bill.findMany({
         orderBy: { createdAt: "desc" },
         include: {
@@ -838,6 +839,7 @@ export async function pendingCountForUser(user: { id: string; role: Role }) {
       });
 
     case "accounts":
+    case "followup":
       return prisma.bill.count({
         where: {
           status: {
@@ -890,7 +892,7 @@ function roleWhere(user: { id: string; role: Role }) {
       OR: [{ employee: { supervisorId: user.id } }, { employeeId: user.id }],
     };
   }
-  // accounts/management -> all
+  // accounts/followup/management -> all
   return {};
 }
 
@@ -919,6 +921,8 @@ export async function getBillsForRolePage(
       ],
     };
   } else if (user.role === "accounts") {
+    where = { status: { in: ["APPROVED_BY_SUPERVISOR", "APPROVED_BY_MANAGEMENT"] } };
+  } else if (user.role === "followup") {
     where = { status: { in: ["APPROVED_BY_SUPERVISOR", "APPROVED_BY_MANAGEMENT"] } };
   } else if (user.role === "management") {
     where = { status: "APPROVED_BY_ACCOUNTS" };
@@ -957,7 +961,7 @@ export async function getPendingCountForUser(userId: string, role: Role) {
       where: { supervisorId: userId, status: "SUBMITTED" },
     });
   }
-  if (role === "accounts") {
+  if (role === "accounts" || role === "followup") {
     // bills ready for accounts review
     return prisma.bill.count({
       where: { status: "APPROVED_BY_SUPERVISOR" },

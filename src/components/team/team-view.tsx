@@ -68,6 +68,7 @@ export function TeamView({ initialUsers, allUsers }: TeamViewProps) {
               <SelectItem value="supervisor" className="text-amber-700 focus:bg-amber-50 focus:text-amber-900">Supervisor</SelectItem>
               <SelectItem value="accounts" className="text-violet-700 focus:bg-violet-50 focus:text-violet-900">Accounts</SelectItem>
               <SelectItem value="management" className="text-emerald-700 focus:bg-emerald-50 focus:text-emerald-900">Management</SelectItem>
+              <SelectItem value="followup" className="text-cyan-700 focus:bg-cyan-50 focus:text-cyan-900">Follow-up</SelectItem>
             </SelectContent>
           </Select>
           <Select value={departmentFilter} onValueChange={setDepartmentFilter}>

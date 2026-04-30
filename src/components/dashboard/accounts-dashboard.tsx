@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Bill, User } from "@/lib/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BillsTable } from "../bills/bills-table";
 import { ExportButton } from "../export/export-button";
 import { PaidBillsAnalytics } from "./paid-bills-analytics";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 /**
  * IMPORTANT: `bills` and `users` must be plain/serializable (no Prisma Decimal/Date objects).
@@ -17,9 +19,12 @@ interface AccountsDashboardProps {
   user: User;
   bills: Bill[];
   users: User[];
+  heading?: string;
 }
 
-export function AccountsDashboard({ user, bills, users }: AccountsDashboardProps) {
+export function AccountsDashboard({ user, bills, users, heading = "Accounts Department" }: AccountsDashboardProps) {
+  const [allBillsQuery, setAllBillsQuery] = useState("");
+
   // Buckets
   const pendingApprovalBills = useMemo(
     () => bills.filter((b) => b.status === "APPROVED_BY_SUPERVISOR"),
@@ -38,6 +43,26 @@ export function AccountsDashboard({ user, bills, users }: AccountsDashboardProps
 
   const allBills = bills;
 
+  const filteredAllBills = useMemo(() => {
+    const query = allBillsQuery.trim().toLowerCase();
+    if (!query) return allBills;
+
+    return allBills.filter((bill) => {
+      const employeeName = (users.find((user) => user.id === bill.employeeId)?.name || "").toLowerCase();
+      const itemHit = (bill.items || []).some((item) =>
+        `${item.incident ?? ""} ${item.purpose} ${item.from} ${item.to}`.toLowerCase().includes(query)
+      );
+
+      return (
+        bill.id.toLowerCase().includes(query) ||
+        bill.companyName.toLowerCase().includes(query) ||
+        bill.companyAddress.toLowerCase().includes(query) ||
+        employeeName.includes(query) ||
+        itemHit
+      );
+    });
+  }, [allBills, allBillsQuery, users]);
+
   // Counts for notification pills
   const countPendingApproval = pendingApprovalBills.length;
   const countPendingPayment = pendingPaymentBills.length;
@@ -53,7 +78,7 @@ export function AccountsDashboard({ user, bills, users }: AccountsDashboardProps
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Accounts Department</h1>
+      <h1 className="text-3xl font-bold">{heading}</h1>
 
       <Tabs defaultValue="pending-approval">
         <TabsList className="flex h-auto flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-md shadow-slate-900/5">
@@ -124,10 +149,28 @@ export function AccountsDashboard({ user, bills, users }: AccountsDashboardProps
 
         <TabsContent value="all-bills">
           <BillsTable
-            bills={allBills}
+            bills={filteredAllBills}
             users={users}
             title="Complete Bill History"
-            action={<ExportButton bills={allBills} users={users} fileName="All_Bills_History" />}
+            action={
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  value={allBillsQuery}
+                  onChange={(e) => setAllBillsQuery(e.target.value)}
+                  placeholder="Search incident number..."
+                  aria-label="Search all bills history"
+                  className="w-64"
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => setAllBillsQuery("")}
+                  disabled={!allBillsQuery}
+                >
+                  Clear
+                </Button>
+                <ExportButton bills={filteredAllBills} users={users} fileName="All_Bills_History" />
+              </div>
+            }
           />
         </TabsContent>
       </Tabs>

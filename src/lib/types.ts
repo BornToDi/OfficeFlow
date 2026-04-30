@@ -1,6 +1,6 @@
 // src/lib/types.ts
 
-export type Role = "employee" | "supervisor" | "accounts" | "management";
+export type Role = "employee" | "supervisor" | "accounts" | "management" | "followup";
 
 export type BillStatus =
   | "DRAFT"
@@ -31,6 +31,7 @@ export interface BillItem {
   date: string;                 // ISO
   from: string;
   to: string;
+  incident?: string | null;
   transport?: string | null;    // optional in DB/UI
   purpose: string;
   amount: number;

@@ -15,6 +15,7 @@ enum Role {
   supervisor
   accounts
   management
+  followup
 }
 
 enum BillStatus {
