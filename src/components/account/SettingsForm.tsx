@@ -137,7 +137,9 @@ export default function SettingsForm({
           )}
           {state?.success && (
             <Alert className="border-green-300 bg-green-50">
-              <AlertDescription className="text-green-800">Profile updated successfully.</AlertDescription>
+              <AlertDescription className="text-green-800">
+                {(state as any)?.message || "Profile updated successfully."}
+              </AlertDescription>
             </Alert>
           )}
 

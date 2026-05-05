@@ -1,6 +1,7 @@
 // src/lib/repo.ts
 import { prisma } from "./prisma"; // ensure this file exports your Prisma client
 import type { Role, BillStatus } from "./types";
+import crypto from "node:crypto";
 
 // ---- DUPLICATE TRIP GUARD ----
 // "Same bill again" = same employee + same calendar day + same from/to/purpose.
@@ -290,6 +291,180 @@ export async function listDirectReports(supervisorId: string) {
     orderBy: { name: "asc" },
   });
 }
+
+/* ========== SUPERVISOR CHANGE REQUESTS ========== */
+
+function mapSupervisorChangeRequestRow(row: any) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    employeeId: row.employeeId,
+    currentSupervisorId: row.currentSupervisorId,
+    newSupervisorId: row.newSupervisorId,
+    status: row.status,
+    reason: row.reason,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    approvedAt: row.approvedAt,
+    approvedById: row.approvedById,
+    employee: row.employee_id
+      ? {
+          id: row.employee_id,
+          name: row.employee_name,
+          email: row.employee_email,
+          employeeCode: row.employee_employeeCode,
+        }
+      : null,
+    currentSupervisor: row.currentSupervisor_id
+      ? {
+          id: row.currentSupervisor_id,
+          name: row.currentSupervisor_name,
+          email: row.currentSupervisor_email,
+        }
+      : null,
+    newSupervisor: row.newSupervisor_id
+      ? {
+          id: row.newSupervisor_id,
+          name: row.newSupervisor_name,
+          email: row.newSupervisor_email,
+        }
+      : null,
+    approvedBy: row.approvedBy_id
+      ? {
+          id: row.approvedBy_id,
+          name: row.approvedBy_name,
+          email: row.approvedBy_email,
+        }
+      : null,
+  };
+}
+
+export async function createSupervisorChangeRequest(
+  employeeId: string,
+  newSupervisorId: string
+) {
+  const employee = await prisma.user.findUnique({ where: { id: employeeId } });
+  if (!employee) throw new Error("Employee not found");
+
+  const newSupervisor = await prisma.user.findUnique({ where: { id: newSupervisorId } });
+  if (!newSupervisor) throw new Error("New supervisor not found");
+
+  if (newSupervisor.role !== "supervisor") {
+    throw new Error("Selected user is not a supervisor");
+  }
+
+  const existingRequest = await prisma.$queryRawUnsafe<any[]>(
+    "SELECT id FROM `SupervisorChangeRequest` WHERE employeeId = ? AND status = 'PENDING' LIMIT 1",
+    employeeId
+  );
+
+  if (existingRequest.length > 0) {
+    throw new Error("You already have a pending supervisor change request");
+  }
+
+  const insertedId = crypto.randomUUID();
+  await prisma.$executeRawUnsafe(
+    "INSERT INTO `SupervisorChangeRequest` (id, employeeId, currentSupervisorId, newSupervisorId, status, createdAt, updatedAt) VALUES (?, ?, ?, ?, 'PENDING', NOW(), NOW())",
+    insertedId,
+    employeeId,
+    employee.supervisorId,
+    newSupervisorId
+  );
+
+  const createdRows = await prisma.$queryRawUnsafe<any[]>(
+    "SELECT r.*, e.id AS employee_id, e.name AS employee_name, e.email AS employee_email, e.employeeCode AS employee_employeeCode, cs.id AS currentSupervisor_id, cs.name AS currentSupervisor_name, cs.email AS currentSupervisor_email, ns.id AS newSupervisor_id, ns.name AS newSupervisor_name, ns.email AS newSupervisor_email, ab.id AS approvedBy_id, ab.name AS approvedBy_name, ab.email AS approvedBy_email FROM `SupervisorChangeRequest` r JOIN `User` e ON e.id = r.employeeId LEFT JOIN `User` cs ON cs.id = r.currentSupervisorId JOIN `User` ns ON ns.id = r.newSupervisorId LEFT JOIN `User` ab ON ab.id = r.approvedById WHERE r.id = ? LIMIT 1",
+    insertedId
+  );
+
+  return mapSupervisorChangeRequestRow(createdRows[0]);
+}
+
+export async function getPendingSupervisorChangeRequests(supervisorId: string) {
+  const rows = await prisma.$queryRawUnsafe<any[]>(
+    "SELECT r.*, e.id AS employee_id, e.name AS employee_name, e.email AS employee_email, e.employeeCode AS employee_employeeCode, cs.id AS currentSupervisor_id, cs.name AS currentSupervisor_name, cs.email AS currentSupervisor_email, ns.id AS newSupervisor_id, ns.name AS newSupervisor_name, ns.email AS newSupervisor_email, ab.id AS approvedBy_id, ab.name AS approvedBy_name, ab.email AS approvedBy_email FROM `SupervisorChangeRequest` r JOIN `User` e ON e.id = r.employeeId LEFT JOIN `User` cs ON cs.id = r.currentSupervisorId JOIN `User` ns ON ns.id = r.newSupervisorId LEFT JOIN `User` ab ON ab.id = r.approvedById WHERE r.currentSupervisorId = ? AND r.status = 'PENDING' ORDER BY r.createdAt DESC",
+    supervisorId
+  );
+
+  return rows.map(mapSupervisorChangeRequestRow);
+}
+
+export async function approveSupervisorChangeRequest(
+  requestId: string,
+  supervisorId: string
+) {
+  const requestRows = await prisma.$queryRawUnsafe<any[]>(
+    "SELECT * FROM `SupervisorChangeRequest` WHERE id = ? LIMIT 1",
+    requestId
+  );
+  const request = requestRows[0];
+
+  if (!request) throw new Error("Request not found");
+  if (request.status !== "PENDING") throw new Error("Request is not pending");
+  if (request.currentSupervisorId !== supervisorId) {
+    throw new Error("Unauthorized: you are not the current supervisor");
+  }
+
+  await prisma.$executeRawUnsafe(
+    "UPDATE `SupervisorChangeRequest` SET status = 'APPROVED', approvedAt = NOW(), approvedById = ?, updatedAt = NOW() WHERE id = ?",
+    supervisorId,
+    requestId
+  );
+
+  await prisma.user.update({
+    where: { id: request.employeeId },
+    data: { supervisorId: request.newSupervisorId },
+  });
+
+  const updatedRows = await prisma.$queryRawUnsafe<any[]>(
+    "SELECT r.*, e.id AS employee_id, e.name AS employee_name, e.email AS employee_email, e.employeeCode AS employee_employeeCode, cs.id AS currentSupervisor_id, cs.name AS currentSupervisor_name, cs.email AS currentSupervisor_email, ns.id AS newSupervisor_id, ns.name AS newSupervisor_name, ns.email AS newSupervisor_email, ab.id AS approvedBy_id, ab.name AS approvedBy_name, ab.email AS approvedBy_email FROM `SupervisorChangeRequest` r JOIN `User` e ON e.id = r.employeeId LEFT JOIN `User` cs ON cs.id = r.currentSupervisorId JOIN `User` ns ON ns.id = r.newSupervisorId LEFT JOIN `User` ab ON ab.id = r.approvedById WHERE r.id = ? LIMIT 1",
+    requestId
+  );
+
+  return mapSupervisorChangeRequestRow(updatedRows[0]);
+}
+
+export async function rejectSupervisorChangeRequest(
+  requestId: string,
+  supervisorId: string,
+  reason?: string
+) {
+  const requestRows = await prisma.$queryRawUnsafe<any[]>(
+    "SELECT * FROM `SupervisorChangeRequest` WHERE id = ? LIMIT 1",
+    requestId
+  );
+  const request = requestRows[0];
+
+  if (!request) throw new Error("Request not found");
+  if (request.status !== "PENDING") throw new Error("Request is not pending");
+  if (request.currentSupervisorId !== supervisorId) {
+    throw new Error("Unauthorized: you are not the current supervisor");
+  }
+
+  await prisma.$executeRawUnsafe(
+    "UPDATE `SupervisorChangeRequest` SET status = 'REJECTED', approvedAt = NOW(), approvedById = ?, reason = ?, updatedAt = NOW() WHERE id = ?",
+    supervisorId,
+    reason || null,
+    requestId
+  );
+
+  const updatedRows = await prisma.$queryRawUnsafe<any[]>(
+    "SELECT r.*, e.id AS employee_id, e.name AS employee_name, e.email AS employee_email, e.employeeCode AS employee_employeeCode, cs.id AS currentSupervisor_id, cs.name AS currentSupervisor_name, cs.email AS currentSupervisor_email, ns.id AS newSupervisor_id, ns.name AS newSupervisor_name, ns.email AS newSupervisor_email, ab.id AS approvedBy_id, ab.name AS approvedBy_name, ab.email AS approvedBy_email FROM `SupervisorChangeRequest` r JOIN `User` e ON e.id = r.employeeId LEFT JOIN `User` cs ON cs.id = r.currentSupervisorId JOIN `User` ns ON ns.id = r.newSupervisorId LEFT JOIN `User` ab ON ab.id = r.approvedById WHERE r.id = ? LIMIT 1",
+    requestId
+  );
+
+  return mapSupervisorChangeRequestRow(updatedRows[0]);
+}
+
+export async function getSupervisorChangeRequestHistory(employeeId: string) {
+  const rows = await prisma.$queryRawUnsafe<any[]>(
+    "SELECT r.*, e.id AS employee_id, e.name AS employee_name, e.email AS employee_email, e.employeeCode AS employee_employeeCode, cs.id AS currentSupervisor_id, cs.name AS currentSupervisor_name, cs.email AS currentSupervisor_email, ns.id AS newSupervisor_id, ns.name AS newSupervisor_name, ns.email AS newSupervisor_email, ab.id AS approvedBy_id, ab.name AS approvedBy_name, ab.email AS approvedBy_email FROM `SupervisorChangeRequest` r JOIN `User` e ON e.id = r.employeeId LEFT JOIN `User` cs ON cs.id = r.currentSupervisorId JOIN `User` ns ON ns.id = r.newSupervisorId LEFT JOIN `User` ab ON ab.id = r.approvedById WHERE r.employeeId = ? ORDER BY r.createdAt DESC",
+    employeeId
+  );
+
+  return rows.map(mapSupervisorChangeRequestRow);
+}
+
+
 
 /* ========== BILLS (final submit path) ========== */
 
@@ -912,10 +1087,10 @@ export async function getBillsForRolePage(
   if (user.role === "employee") {
     where = { employeeId: user.id };
   } else if (user.role === "supervisor") {
-    // Show all bills relevant to this supervisor: team’s bills, forwarded to me, and my own
+    // Show all bills relevant to this supervisor:  All Employee’s bills, forwarded to me, and my own
     where = {
       OR: [
-        { employee: { supervisorId: user.id } }, // my team (default supervisor route)
+        { employee: { supervisorId: user.id } }, // my  All Employee (default supervisor route)
         { supervisorId: user.id },               // explicitly forwarded to me
         { employeeId: user.id },                 // my own bills
       ],

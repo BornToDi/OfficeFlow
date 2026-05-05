@@ -1,2 +1,2 @@
--- DropIndex
-DROP INDEX `User_resetTokenHash_idx` ON `user`;
+-- This migration was previously empty or had conflicting operations
+-- Placeholder for future password reset token functionality

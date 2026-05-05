@@ -45,6 +45,7 @@ export interface Bill {
   companyName: string;
   companyAddress: string;
   employeeId: string;           // internal user.id (not employeeCode)
+  supervisorId?: string | null;
   amount: number;               // total amount
   amountInWords: string;
   items: BillItem[];

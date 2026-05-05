@@ -27,6 +27,7 @@ interface PaidBillsAnalyticsProps {
   bills: Bill[];
   users: User[];
   exportFileName: string;
+  userRole?: string;
 }
 
 export function PaidBillsAnalytics({
@@ -34,6 +35,7 @@ export function PaidBillsAnalytics({
   bills,
   users,
   exportFileName,
+  userRole,
 }: PaidBillsAnalyticsProps) {
   const [paidSearchTerm, setPaidSearchTerm] = useState("");
   const [paidDepartmentFilter, setPaidDepartmentFilter] = useState("all");
@@ -209,7 +211,13 @@ export function PaidBillsAnalytics({
             <Button type="button" variant="outline" onClick={clearFilters} disabled={!hasActiveFilters}>
               Clear filters
             </Button>
-            <ExportButton bills={filteredBills} users={users} fileName={exportFileName} />
+            <ExportButton 
+              bills={filteredBills} 
+              users={users} 
+              fileName={exportFileName} 
+              userRole={userRole}
+              exportType="paid-bills"
+            />
           </div>
         </div>
       </div>

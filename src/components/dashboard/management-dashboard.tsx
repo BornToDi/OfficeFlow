@@ -110,6 +110,7 @@ export function ManagementDashboard({ user, bills, users }: ManagementDashboardP
             bills={allPaidBills}
             users={users}
             exportFileName="Management_Paid_Bills"
+            userRole={user.role}
           />
         </TabsContent>
 

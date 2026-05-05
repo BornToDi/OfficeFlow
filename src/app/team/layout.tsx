@@ -60,10 +60,10 @@ export default async function TeamLayout({ children }: { children: React.ReactNo
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild tooltip="Team" isActive>
+              <SidebarMenuButton asChild tooltip="All Employee" isActive>
                 <Link href="/team">
                   <Users />
-                  Team
+                  All Employee
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

@@ -93,10 +93,10 @@ export default async function ReportsLayout({
             </SidebarMenuItem>
 
             <SidebarMenuItem>
-              <SidebarMenuButton asChild tooltip="Team">
+              <SidebarMenuButton asChild tooltip="All Employee">
                 <Link href="/team">
                   <Users />
-                  Team
+                  All Employee
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

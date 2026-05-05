@@ -45,6 +45,13 @@ model User {
   assignedBills  Bill[]        @relation("SupervisorAssignedBills")
   bills          Bill[]        @relation("EmployeeBills")
   actorHistories BillHistory[] @relation("ActorHistory")
+  
+  // Supervisor change requests
+  supervisorChangeRequests        SupervisorChangeRequest[] @relation("EmployeeSupervisorChangeRequests")
+  currentSupervisorRequests       SupervisorChangeRequest[] @relation("CurrentSupervisorChangeRequests")
+  newSupervisorRequests           SupervisorChangeRequest[] @relation("NewSupervisorChangeRequests")
+  approvedSupervisorChangeRequests SupervisorChangeRequest[] @relation("ApprovedByUser")
+  
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -105,4 +112,32 @@ model BillHistory {
 
   @@index([billId])
   @@index([actorId])
+}
+
+enum SupervisorChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model SupervisorChangeRequest {
+  id              String                   @id @default(cuid())
+  employee        User                     @relation("EmployeeSupervisorChangeRequests", fields: [employeeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  employeeId      String
+  currentSupervisor User?                  @relation("CurrentSupervisorChangeRequests", fields: [currentSupervisorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  currentSupervisorId String?
+  newSupervisor   User                     @relation("NewSupervisorChangeRequests", fields: [newSupervisorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  newSupervisorId String
+  status          SupervisorChangeStatus  @default(PENDING)
+  reason          String?                 @db.LongText
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  approvedAt      DateTime?
+  approvedBy      User?                   @relation("ApprovedByUser", fields: [approvedById], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  approvedById    String?
+
+  @@index([employeeId])
+  @@index([currentSupervisorId])
+  @@index([newSupervisorId])
+  @@index([status])
 }

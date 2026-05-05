@@ -144,6 +144,7 @@ export function AccountsDashboard({ user, bills, users, heading = "Accounts Depa
             bills={allPaidBills}
             users={users}
             exportFileName="Paid_Bills"
+            userRole={user.role}
           />
         </TabsContent>
 

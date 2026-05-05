@@ -48,7 +48,7 @@ export function BillsTable({ bills, users, title, action, showDepartment = false
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Details</TableHead>
+              <TableHead>ID</TableHead>
               <TableHead>Amount</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Submitted By</TableHead>

@@ -46,3 +46,17 @@ export function toPlainBill(bill: any) {
     supervisor: bill.supervisor ? toPlainUser(bill.supervisor) : bill.supervisor,
   };
 }
+
+export function toPlainSupervisorChangeRequest(request: any) {
+  if (!request) return null;
+  return {
+    ...request,
+    createdAt: toISO(request.createdAt),
+    updatedAt: toISO(request.updatedAt),
+    approvedAt: toISO(request.approvedAt),
+    employee: request.employee ? toPlainUser(request.employee) : request.employee,
+    currentSupervisor: request.currentSupervisor ? toPlainUser(request.currentSupervisor) : request.currentSupervisor,
+    newSupervisor: request.newSupervisor ? toPlainUser(request.newSupervisor) : request.newSupervisor,
+    approvedBy: request.approvedBy ? toPlainUser(request.approvedBy) : request.approvedBy,
+  };
+}

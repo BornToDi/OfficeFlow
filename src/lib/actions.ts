@@ -385,7 +385,8 @@ import {
   updateBillDraft,
   submitDraft,
   updateUserProfile,
-  assertNoDuplicateTripsForEmployee, 
+  assertNoDuplicateTripsForEmployee,
+  createSupervisorChangeRequest,
 } from "./repo";
 
 import { updateUserPassword } from "./repo";
@@ -592,13 +593,27 @@ export async function updateProfile(
   if (!email) return { error: "Email is required." };
 
   try {
+    // Get current user to check if supervisor is being changed
+    const currentUser = await findUserById(session.user.id);
+    const supervisorChanged = supervisorId !== currentUser?.supervisorId;
+
+    // Update basic profile fields (name, email, designation, department)
     await updateUserProfile(session.user.id, {
       name,
       email,
       designation: designation || null,
       department: department || null,
-      supervisorId,
+      // Don't update supervisorId directly
+      supervisorId: undefined,
     });
+
+    // If supervisor is being changed, create a request instead of direct update
+    if (supervisorChanged && supervisorId) {
+      await createSupervisorChangeRequest(session.user.id, supervisorId);
+      revalidatePath("/dashboard");
+      revalidatePath("/settings");
+      return { success: true, message: "Profile updated. Supervisor change request sent for approval." };
+    }
 
     revalidatePath("/dashboard");
     revalidatePath("/settings");
