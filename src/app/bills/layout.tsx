@@ -75,49 +75,39 @@ export default async function BillsLayout({
                  )}
                 <SidebarMenu>
                     <SidebarMenuItem>
-                        <SidebarMenuButton asChild tooltip="Dashboard">
-                            <Link href="/dashboard">
-                                <LayoutGrid />
-                                Dashboard
-                            </Link>
-                        </SidebarMenuButton>
+                        <Link href="/dashboard" className="flex h-8 items-center gap-2 rounded-md px-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+                            <LayoutGrid />
+                            Dashboard
+                        </Link>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <SidebarMenuButton asChild tooltip="Bills" isActive>
-                            <Link href="/bills">
-                                <FileText />
-                                Bills
-                            </Link>
-                        </SidebarMenuButton>
+                        <Link href="/bills" className="flex h-8 items-center gap-2 rounded-md px-2 text-sm bg-sidebar-accent text-sidebar-accent-foreground">
+                            <FileText />
+                            Bills
+                        </Link>
                         {pendingCount > 0 && <SidebarMenuBadge>{pendingCount}</SidebarMenuBadge>}
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <SidebarMenuButton asChild tooltip="Reports">
-                            <Link href="/reports">
-                                <BarChart />
-                                Reports
-                            </Link>
-                        </SidebarMenuButton>
+                        <Link href="/reports" className="flex h-8 items-center gap-2 rounded-md px-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+                            <BarChart />
+                            Reports
+                        </Link>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <SidebarMenuButton asChild tooltip="All Employee">
-                            <Link href="/team">
-                                <Users />
-                                All Employee
-                            </Link>
-                        </SidebarMenuButton>
+                        <Link href="/team" className="flex h-8 items-center gap-2 rounded-md px-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+                            <Users />
+                            All Employee
+                        </Link>
                     </SidebarMenuItem>
                 </SidebarMenu>
             </SidebarContent>
             <SidebarFooter>
                 <SidebarMenu>
                     <SidebarMenuItem>
-                        <SidebarMenuButton asChild tooltip="Settings">
-                            <Link href="#">
-                                <Settings />
-                                Settings
-                            </Link>
-                        </SidebarMenuButton>
+                        <Link href="/settings" className="flex h-8 items-center gap-2 rounded-md px-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+                            <Settings />
+                            Settings
+                        </Link>
                     </SidebarMenuItem>
                 </SidebarMenu>
             </SidebarFooter>

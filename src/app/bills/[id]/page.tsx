@@ -37,13 +37,13 @@ export default async function BillDetail({
   params,
   searchParams,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }> | { id: string };
   searchParams?: { edit?: string; _debugInfo?: string };
 }) {
   const session = await getSession();
   if (!session) return <div className="p-6 text-sm">Not signed in.</div>;
 
-  const { id } = params;
+  const { id } = await Promise.resolve(params);
   // `searchParams` may be a thenable in some Next.js runtimes — await if needed.
   const sp = searchParams && typeof (searchParams as any).then === "function" ? await (searchParams as any) : searchParams;
   const wantsEdit = (sp?.edit ?? "") === "1";
@@ -57,8 +57,9 @@ export default async function BillDetail({
     companyAddress: dbBill.companyAddress,
     employeeId: dbBill.employeeId,
     employeeName: dbBill.employee?.name || "",
-    employeeDesignation: dbBill.employee?.designation ?? "",
-    employeeCode: dbBill.employee?.employeeCode ?? "",
+      employeeDesignation: dbBill.employee?.designation ?? "",
+      employeeDepartment: dbBill.employee?.department ?? "",
+      employeeCode: dbBill.employee?.employeeCode ?? "",
     amount: Number(dbBill.amount),
     amountInWords: dbBill.amountInWords,
     status: dbBill.status,

@@ -1,6 +1,6 @@
 import { getSession } from "@/lib/actions";
 import { redirect } from "next/navigation";
-import { SidebarProvider, Sidebar, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarContent, SidebarFooter, SidebarInset, SidebarGroup, SidebarMenuBadge } from "@/components/ui/sidebar";
+import { SidebarProvider, Sidebar, SidebarMenu, SidebarMenuItem, SidebarHeader, SidebarContent, SidebarFooter, SidebarInset, SidebarGroup, SidebarMenuBadge } from "@/components/ui/sidebar";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, LayoutGrid, FileText, BarChart, Users, Settings } from "lucide-react";
@@ -74,51 +74,15 @@ export default async function DashboardLayout({
                     </SidebarGroup>
                 )}
                 <SidebarMenu>
-                    <SidebarMenuItem>
-                        <SidebarMenuButton asChild tooltip="Dashboard" isActive>
-                            <Link href="/dashboard">
-                                <LayoutGrid />
-                                Dashboard
-                            </Link>
-                        </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
-                        <SidebarMenuButton asChild tooltip="Bills">
-                            <Link href="/bills">
-                                <FileText />
-                                Bills
-                            </Link>
-                        </SidebarMenuButton>
-                        {pendingCount > 0 && <SidebarMenuBadge>{pendingCount}</SidebarMenuBadge>}
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
-                        <SidebarMenuButton asChild tooltip="Reports">
-                            <Link href="/reports">
-                                <BarChart />
-                                Reports
-                            </Link>
-                        </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
-                        <SidebarMenuButton asChild tooltip="All Employee">
-                            <Link href="/team">
-                                <Users />
-                                All Employee
-                            </Link>
-                        </SidebarMenuButton>
-                    </SidebarMenuItem>
+                    <SidebarMenuItem><Link href="/dashboard" className="flex h-8 items-center gap-2 rounded-md px-2 text-sm bg-sidebar-accent text-sidebar-accent-foreground"><LayoutGrid />Dashboard</Link></SidebarMenuItem>
+                    <SidebarMenuItem><Link href="/bills" className="flex h-8 items-center gap-2 rounded-md px-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"><FileText />Bills</Link>{pendingCount > 0 && <SidebarMenuBadge>{pendingCount}</SidebarMenuBadge>}</SidebarMenuItem>
+                    <SidebarMenuItem><Link href="/reports" className="flex h-8 items-center gap-2 rounded-md px-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"><BarChart />Reports</Link></SidebarMenuItem>
+                    <SidebarMenuItem><Link href="/team" className="flex h-8 items-center gap-2 rounded-md px-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"><Users />All Employee</Link></SidebarMenuItem>
                 </SidebarMenu>
             </SidebarContent>
             <SidebarFooter>
                 <SidebarMenu>
-                    <SidebarMenuItem>
-                        <SidebarMenuButton asChild tooltip="Settings">
-                            <Link href="#">
-                                <Settings />
-                                Settings
-                            </Link>
-                        </SidebarMenuButton>
-                    </SidebarMenuItem>
+                    <SidebarMenuItem><Link href="/settings" className="flex h-8 items-center gap-2 rounded-md px-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"><Settings />Settings</Link></SidebarMenuItem>
                 </SidebarMenu>
             </SidebarFooter>
         </Sidebar>

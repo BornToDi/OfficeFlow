@@ -695,8 +695,8 @@ async function parseBillForm(formData: FormData, currentUserRole: "employee" | "
     throw new Error("Items payload is invalid.");
   }
 
-  // pick up per-row files only for BILL2 / BILL3 / BILL4
-  if (formatType === "BILL2" || formatType === "BILL3" || formatType === "BILL4") {
+  // pick up per-row files for BILL2 / BILL3 / BILL4 / BILL5
+  if (formatType === "BILL2" || formatType === "BILL3" || formatType === "BILL4" || formatType === "BILL5") {
     for (let i = 0; i < items.length; i++) {
       const maybe = formData.get(`attachment_${i}`);
       const looksLikeFile = !!maybe && typeof (maybe as any).arrayBuffer === "function";
@@ -753,14 +753,7 @@ export async function saveDraft(
       return { error: "Invalid employee. Enter a valid User ID or Employee Code." };
     }
 
-   // Only check when caller sent items (new drafts or item edits)
-if (!parsed.existingBillId) {
-  if (parsed.items?.length) {
-    await assertNoDuplicateTripsForEmployee(employeeIdToUse, parsed.items);
-  }
-} else if (parsed.items && parsed.items.length) {
-  await assertNoDuplicateTripsForEmployee(employeeIdToUse, parsed.items, parsed.existingBillId);
-}
+   // Duplicate check removed per user request
 
     let billId = parsed.existingBillId;
 
@@ -827,10 +820,7 @@ export async function submitBill(
 
 if (parsed.existingBillId) {
 
-  // Validate against other bills (exclude itself)
-  if (parsed.items?.length) {
-    await assertNoDuplicateTripsForEmployee(employeeIdToUse, parsed.items, parsed.existingBillId);
-  }
+  // Duplicate check removed per user request
 
   // Always update the draft with current payload (won't wipe files unless provided)
   await updateBillDraft(parsed.existingBillId, {
@@ -869,9 +859,7 @@ if (parsed.existingBillId) {
 }
 
 // NEW bill path
-if (parsed.items?.length) {
-  await assertNoDuplicateTripsForEmployee(employeeIdToUse, parsed.items);
-}
+// Duplicate check removed per user request
 
     // brand-new bill
     // determine submit context so createBill can auto-approve when allowed

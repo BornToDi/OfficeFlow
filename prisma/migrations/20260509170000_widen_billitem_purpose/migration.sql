@@ -1,0 +1,2 @@
+ALTER TABLE `BillItem`
+  MODIFY `purpose` LONGTEXT NOT NULL;

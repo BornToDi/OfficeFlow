@@ -90,7 +90,7 @@ model BillItem {
   from      String
   to        String
   transport String?
-  purpose   String
+  purpose   String   @db.LongText
   amount    Decimal  @db.Decimal(12, 2)
 
   // 👇 NEW: per-row attachment URL (e.g., /uploads/xxx.pdf or /uploads/xxx.jpg)

@@ -566,7 +566,7 @@ export async function getBillById(id: string) {
   return prisma.bill.findUnique({
     where: { id },
     include: {
-      employee: { select: { id: true, name: true, email: true, designation: true, employeeCode: true, supervisorId: true } },
+      employee: { select: { id: true, name: true, email: true, designation: true, employeeCode: true, supervisorId: true, department: true } },
       items: true,
       history: {
         include: {

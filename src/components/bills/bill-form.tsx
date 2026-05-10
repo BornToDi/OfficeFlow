@@ -2,7 +2,7 @@
 "use client";
 
 import { useActionState, useTransition } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Fragment } from "react";
 import { useForm, useFieldArray, FormProvider, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -42,6 +42,7 @@ export type BillViewData = {
   employeeId: string;
   employeeName: string;
   employeeDesignation?: string | null;
+  employeeDepartment?: string | null;
   employeeCode?: string | null;
   amount: number;
   amountInWords: string;
@@ -49,7 +50,7 @@ export type BillViewData = {
   items: BillViewItem[];
 };
 
-type BillFormat = "BILL1"|"BILL2"|"BILL3"|"BILL4";
+type BillFormat = "BILL1"|"BILL2"|"BILL3"|"BILL4"|"BILL5";
 
 /* ---------- Row shapes ---------- */
 type RowB1 = {
@@ -88,7 +89,7 @@ type RowB4 = {
   time: string;        // e.g. "10:00 AM"
   incident: string;    // free text
   purpose: string;     // e.g. "ABBL Laptop A/C call"
-  meal?: string;       // e.g. "Breakfast", "Lunch", "Breakfast + Lunch + Dinner"
+  vehicle?: string;    // e.g. "Car", "Bike", "Rickshaw"
   food?: number;
   hotel?: number;
   others?: number;
@@ -96,12 +97,37 @@ type RowB4 = {
   remarks?: string;
 };
 
+/* Row shape for combined Bill-5 (merge of Bill-2, Bill-3, Bill-4) */
+type RowB5Child = {
+  purpose: string;
+  time?: string;
+  dateFrom?: string | Date;
+  dateTo?: string | Date;
+  vehicle?: string;
+  local?: number;
+  trip?: number;
+  food?: number;
+  hotel?: number;
+  others?: number;
+  advance?: number;
+  remarks?: string;
+};
+
+type RowB5 = {
+  name: string;
+  dateFrom: Date;
+  dateTo: Date;
+  time?: string;
+  incident?: string;
+  children: RowB5Child[];
+};
+
 /* ---------- Schema ---------- */
 const billFormSchema = z.object({
   billId: z.string().optional(),
-  companyName: z.string().min(1, "Required"),
-  companyAddress: z.string().min(1, "Required"),
-  employeeName: z.string().min(1, "Required"),
+  companyName: z.string().optional(),
+  companyAddress: z.string().optional(),
+  employeeName: z.string().optional(),
   employeeDesignation: z.string().optional(), // visible but not submitted
   supervisorId: z.string().optional(),
   items: z.array(z.any()).min(1, "Add at least one row"),
@@ -119,6 +145,7 @@ const detectFormat = (items?: BillViewItem[]): BillFormat => {
   if (t === "__BILL2__") return "BILL2";
   if (t === "__BILL3__") return "BILL3";
   if (t === "__BILL4__") return "BILL4";
+  if (t === "__BILL5__") return "BILL5";
   return "BILL1";
 };
 
@@ -174,7 +201,7 @@ const encB4 = (r: RowB4) => {
     time: r.time || "",
     incident: r.incident || "",
     purpose: r.purpose || "",
-    meal: r.meal || "",
+    vehicle: r.vehicle || "",
     food: Number(r.food || 0),
     hotel: Number(r.hotel || 0),
     others: Number(r.others || 0),
@@ -198,7 +225,7 @@ const decB4 = (s: string) => {
       time: String(o.time || ""),
       incident: String(o.incident || ""),
       purpose: String(o.purpose || ""),
-      meal: String(o.meal || ""),
+      vehicle: String(o.vehicle || ""),
       food,
       hotel,
       others,
@@ -212,7 +239,7 @@ const decB4 = (s: string) => {
       time: "",
       incident: "",
       purpose: s,
-      meal: "",
+      vehicle: "",
       food: 0,
       hotel: 0,
       others: 0,
@@ -221,6 +248,47 @@ const decB4 = (s: string) => {
       net: 0,
       remarks: ""
     };
+  }
+};
+
+/* Bill-5 payload: pack a child row together with its parent metadata */
+const encB5Child = (parent: RowB5, child: RowB5Child) => {
+  const local = Number(child.local||0);
+  const trip = Number(child.trip||0);
+  const food = Number(child.food||0);
+  const hotel = Number(child.hotel||0);
+  const others = Number(child.others||0);
+  const advance = Number(child.advance||0);
+  const total = local + trip + food + hotel + others;
+  const net = total - advance;
+  return JSON.stringify({
+    parentName: parent.name||"",
+    time: child.time || "",
+    dateFrom: child.dateFrom ? (child.dateFrom instanceof Date ? child.dateFrom.toISOString() : String(child.dateFrom)) : "",
+    dateTo: child.dateTo ? (child.dateTo instanceof Date ? child.dateTo.toISOString() : String(child.dateTo)) : "",
+    incident: parent.incident||"",
+    purpose: child.purpose||"",
+    vehicle: child.vehicle||"",
+    local, trip, food, hotel, others, advance, total, net, remarks: child.remarks||""
+  });
+};
+
+  const decB5Child = (s: string) => {
+  try {
+    const o = JSON.parse(s||"{}");
+    return {
+      parentName: String(o.parentName||""),
+      time: String(o.time||""),
+      dateFrom: String(o.dateFrom || ""),
+      dateTo: String(o.dateTo || ""),
+      incident: String(o.incident||""),
+      purpose: String(o.purpose||""),
+      vehicle: String(o.vehicle||""),
+      local: Number(o.local||0), trip: Number(o.trip||0), food: Number(o.food||0), hotel: Number(o.hotel||0), others: Number(o.others||0), advance: Number(o.advance||0), total: Number(o.total||0), net: Number(o.net||0), remarks: String(o.remarks||""),
+      attachmentUrl: undefined as (string | null | undefined)
+    };
+  } catch {
+    return { parentName: "", time: "", dateFrom: "", dateTo: "", incident: "", purpose: s, vehicle: "", local:0, trip:0, food:0, hotel:0, others:0, advance:0, total:0, net:0, remarks: "", attachmentUrl: undefined };
   }
 };
 
@@ -242,6 +310,382 @@ function SubmitButton({ isPending, children, disabled }: { isPending:boolean; ch
   );
 }
 
+function Bill5ChildTable({
+  control,
+  parentIndex,
+  files,
+  onPickFile,
+}: {
+  control: any;
+  parentIndex: number;
+  files: (File | null)[][];
+  onPickFile: (parentIndex: number, childIndex: number, file: File | null) => void;
+}) {
+  const parents = useWatch({ control, name: "items" }) as RowB5[];
+  const { fields: childFields, append: appendChild, remove: removeChild } = useFieldArray({ control, name: `items.${parentIndex}.children` as any });
+
+  return (
+    <div className="w-full">
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Purpose</TableHead>
+              <TableHead className="min-w-[120px]">From</TableHead>
+              <TableHead className="min-w-[120px]">To</TableHead>
+              <TableHead className="min-w-[90px]">Time</TableHead>
+              <TableHead>Vehicle</TableHead>
+              <TableHead className="text-right">Local con</TableHead>
+              <TableHead className="text-right">Trip con</TableHead>
+              <TableHead className="text-right">Food</TableHead>
+              <TableHead className="text-right">Hotel</TableHead>
+              <TableHead className="text-right">Others con</TableHead>
+              <TableHead className="text-right">Advance</TableHead>
+              <TableHead className="text-right">totall amount</TableHead>
+              <TableHead>Remarks</TableHead>
+              <TableHead>Attachment</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {childFields.map((cf, ci) => (
+              <TableRow key={cf.id}>
+                <TableCell>
+                  <FormField control={control} name={`items.${parentIndex}.children.${ci}.purpose`} render={({ field }) => (
+                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="Purpose" required className="w-[220px]" /></FormControl><FormMessage/></FormItem>
+                  )} />
+                </TableCell>
+                <TableCell>
+                  <FormField control={control} name={`items.${parentIndex}.children.${ci}.dateFrom`} render={({ field }) => (
+                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="From" className="w-[140px]" /></FormControl><FormMessage/></FormItem>
+                  )} />
+                </TableCell>
+                <TableCell>
+                  <FormField control={control} name={`items.${parentIndex}.children.${ci}.dateTo`} render={({ field }) => (
+                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="To" className="w-[140px]" /></FormControl><FormMessage/></FormItem>
+                  )} />
+                </TableCell>
+                <TableCell className="align-top">
+                  <FormField control={control} name={`items.${parentIndex}.children.${ci}.time`} render={({ field }) => (
+                    <FormItem><FormControl><Input placeholder="10:00 AM" {...field} autoComplete="off" className="w-[110px]" /></FormControl><FormMessage/></FormItem>
+                  )} />
+                </TableCell>
+                <TableCell>
+                  <FormField control={control} name={`items.${parentIndex}.children.${ci}.vehicle`} render={({ field }) => (
+                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="Vehicle" className="w-[120px]" /></FormControl><FormMessage/></FormItem>
+                  )} />
+                </TableCell>
+                {(["local","trip","food","hotel","others","advance"] as const).map((k) => (
+                  <TableCell key={k} className="text-right">
+                    <FormField control={control} name={`items.${parentIndex}.children.${ci}.${k}`} render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <Input type="number" step="0.01" className="no-spinner text-right w-[90px]" value={field.value ?? ""} onChange={(e)=> field.onChange(e.target.value==="" ? undefined : Number(e.target.value))} />
+                        </FormControl>
+                        <FormMessage/>
+                      </FormItem>
+                    )} />
+                  </TableCell>
+                ))}
+                <TableCell className="text-right">
+                  {(() => {
+                    const v = (parents[parentIndex]?.children?.[ci]) || {} as RowB5Child;
+                    const sum = (Number(v.local)||0)+(Number(v.trip)||0)+(Number(v.food)||0)+(Number(v.hotel)||0)+(Number(v.others)||0);
+                    const net = sum - (Number(v.advance)||0);
+                    return net.toFixed(2);
+                  })()}
+                </TableCell>
+                <TableCell>
+                  <FormField control={control} name={`items.${parentIndex}.children.${ci}.remarks`} render={({ field }) => (
+                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="Remarks" className="w-[160px]" /></FormControl><FormMessage/></FormItem>
+                  )} />
+                </TableCell>
+                <TableCell>
+                  <input type="file" accept="image/*,application/pdf" onChange={(e) => onPickFile(parentIndex, ci, e.currentTarget.files?.[0] ?? null)} />
+                  {files?.[parentIndex]?.[ci] ? <div className="text-xs text-muted-foreground mt-1 truncate max-w-[140px]">{files[parentIndex][ci]?.name}</div> : null}
+                </TableCell>
+                <TableCell className="text-right">
+                  {childFields.length > 1 && (
+                    <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removeChild(ci)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <div className="mt-2">
+        <Button type="button" variant="outline" size="sm" onClick={() => appendChild({ purpose: "", time: "", dateFrom: "", dateTo: "", vehicle: "", local: undefined, trip: undefined, food: undefined, hotel: undefined, others: undefined, advance: undefined, remarks: "" } as any)}>
+          <PlusCircle className="mr-2 h-4 w-4" /> Add row
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* NEW: Editor for Bill-5 (combined) */
+function EditorBill5({ control, fields, append, remove, onPickFile, files, employeeName }: {
+  control:any; fields:any[]; append:(r:RowB5)=>void; remove:(i:number)=>void;
+  onPickFile:(parentIndex:number, childIndex:number, f:File|null)=>void; files:(File|null)[][]; employeeName?:string;
+}) {
+
+  return (
+    <>
+      <div className="rounded-lg border overflow-x-auto">
+        <Table className="min-w-max">
+          <TableHeader>
+            <TableRow>
+              <TableHead>SL</TableHead>
+              <TableHead className="min-w-[180px]">Name</TableHead>
+              <TableHead>Date From</TableHead>
+              <TableHead>Date To</TableHead>
+              <TableHead className="min-w-[220px]">Incident</TableHead>
+              <TableHead className="min-w-[640px]">Purpose (click Add row to add nested child)</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {fields.map((f, i) => (
+              <TableRow key={f.id ?? i}>
+                <TableCell className="p-1 pt-3 font-medium">{i+1}</TableCell>
+                <TableCell className="p-1 min-w-[180px]">
+                  <FormField control={control} name={`items.${i}.name`} render={({ field }) => (
+                    <FormItem><FormControl><Input placeholder="Name" {...field} autoComplete="off" className="w-[180px]" /></FormControl><FormMessage/></FormItem>
+                  )} />
+                </TableCell>
+                {(["dateFrom","dateTo"] as const).map((k) => (
+                  <TableCell className="p-1" key={k}>
+                    <FormField control={control} name={`items.${i}.${k}`} render={({ field }) => (
+                      <FormItem>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button type="button" variant="outline" className={cn("w-full justify-start pl-3 text-left", !field.value && "text-muted-foreground")}>
+                                {field.value ? format(new Date(field.value), "PPP") : "Pick a date"}
+                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar mode="single" selected={field.value ? new Date(field.value) : new Date()} onSelect={field.onChange} disabled={(d) => d < new Date("1900-01-01")} />
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                  </TableCell>
+                ))}
+                <TableCell className="p-1 min-w-[220px]">
+                  <FormField control={control} name={`items.${i}.incident`} render={({ field }) => (
+                    <FormItem><FormControl><Input placeholder="Incident" {...field} autoComplete="off" className="w-[220px]" /></FormControl><FormMessage/></FormItem>
+                  )} />
+                </TableCell>
+                <TableCell className="p-1">
+                  <Bill5ChildTable control={control} parentIndex={i} files={files} onPickFile={onPickFile} />
+                </TableCell>
+
+                <TableCell className="p-1 pt-3 text-right">
+                  {fields.length > 1 && (
+                    <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => remove(i)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      <Button type="button" variant="outline" onClick={() => append({ name: employeeName || "", dateFrom: new Date(), dateTo: new Date(), incident: "", children: [{ purpose: "", time: "", dateFrom: "", dateTo: "", vehicle: "", local: undefined as any, trip: undefined as any, food: undefined as any, hotel: undefined as any, others: undefined as any, advance: undefined as any, remarks: "" }] } as any)}>
+        <PlusCircle className="mr-2 h-4 w-4" /> Add Row
+      </Button>
+    </>
+  );
+}
+
+/* NEW: View for Bill-5 */
+function ViewBill5({ b, fallbackDesignation }: { b: BillViewData; fallbackDesignation?: string }) {
+  const groups: Array<{
+    name: string;
+    dateFrom: Date;
+    dateTo: Date;
+    incident: string;
+    children: Array<ReturnType<typeof decB5Child> & { attachmentUrl?: string | null }>;
+  }> = [];
+
+  const groupMap = new Map<string, (typeof groups)[number]>();
+
+  b.items.forEach((it) => {
+    const dateFrom = safeDate(it.date);
+    const dateTo = it.to ? safeDate(it.to) : safeDate(it.date);
+    try {
+      const parsed = decB5Child(it.purpose);
+      const key = [
+        parsed.parentName || "",
+        dateFrom.toISOString(),
+        dateTo.toISOString(),
+        parsed.incident || "",
+      ].join("|");
+
+      let g = groupMap.get(key);
+      if (!g) {
+        g = {
+          name: parsed.parentName || "",
+          dateFrom,
+          dateTo,
+          incident: parsed.incident || "",
+          children: [],
+        };
+        groupMap.set(key, g);
+        groups.push(g);
+      }
+
+      g.children.push({ ...parsed, attachmentUrl: it.attachmentUrl });
+    } catch {
+      const key = [it.id || "", dateFrom.toISOString(), dateTo.toISOString()].join("|");
+      let g = groupMap.get(key);
+      if (!g) {
+        g = {
+          name: "",
+          dateFrom,
+          dateTo,
+          incident: "",
+          children: [],
+        };
+        groupMap.set(key, g);
+        groups.push(g);
+      }
+      g.children.push({
+        parentName: "",
+        time: "",
+        incident: "",
+        purpose: it.purpose || "",
+        vehicle: "",
+        local : 0,
+        trip: 0,
+        food: 0,
+        hotel: 0,
+        others: 0,
+        advance: 0,
+        dateFrom: "",
+        dateTo: "",
+        total: 0,
+        remarks: "",
+        net: 0,
+        attachmentUrl: it.attachmentUrl,
+      });
+    }
+  });
+
+  const total = groups.reduce((acc, g) => {
+    return (
+      acc +
+      g.children.reduce((sum, c) => {
+        const net =
+          (Number(c.local) || 0) +
+          (Number(c.trip) || 0) +
+          (Number(c.food) || 0) +
+          (Number(c.hotel) || 0) +
+          (Number(c.others) || 0) -
+          (Number(c.advance) || 0);
+        return sum + net;
+      }, 0)
+    );
+  }, 0);
+
+  return (
+    <div className="rounded-xl border bg-white p-6 shadow-sm">
+      <HeaderInfo b={b} fallbackDesignation={fallbackDesignation} />
+      <div className="rounded-lg border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="text-xs">No.</TableHead>
+              <TableHead className="text-xs min-w-[100px]">Name</TableHead>
+              <TableHead className="text-xs">Date From</TableHead>
+              <TableHead className="text-xs">Date To</TableHead>
+              <TableHead className="text-xs min-w-[120px]">Incident</TableHead>
+              <TableHead className="text-xs min-w-[70px]">Time</TableHead>
+              <TableHead className="text-xs">From</TableHead>
+              <TableHead className="text-xs">To</TableHead>
+              <TableHead className="text-xs">Purpose</TableHead>
+              <TableHead className="text-xs">Vehicle</TableHead>
+              <TableHead className="text-xs text-right">Local con</TableHead>
+              <TableHead className="text-xs text-right">Trip con</TableHead>
+              <TableHead className="text-xs text-right">Food</TableHead>
+              <TableHead className="text-xs text-right">Hotel</TableHead>
+              <TableHead className="text-xs text-right">Others</TableHead>
+              <TableHead className="text-xs text-right">Advance</TableHead>
+              <TableHead className="text-xs text-right">Net</TableHead>
+              <TableHead className="text-xs">Remarks</TableHead>
+              <TableHead className="text-xs">Attach</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {groups.map((g, i) => {
+              return g.children.map((c, ci) => {
+                    const net =
+                      (Number(c.local) || 0) +
+                      (Number(c.trip) || 0) +
+                      (Number(c.food) || 0) +
+                      (Number(c.hotel) || 0) +
+                      (Number(c.others) || 0) -
+                      (Number(c.advance) || 0);
+                    return (
+                      <TableRow key={`${i}-${ci}`}>
+                        {ci === 0 ? (
+                          <>
+                            <TableCell className="p-0.5 text-xs" rowSpan={g.children.length}>{i + 1}</TableCell>
+                            <TableCell className="p-0.5 text-xs" rowSpan={g.children.length}>{g.name || "-"}</TableCell>
+                            <TableCell className="p-0.5 text-xs" rowSpan={g.children.length}>{format(g.dateFrom, "MMM d")}</TableCell>
+                            <TableCell className="p-0.5 text-xs" rowSpan={g.children.length}>{format(g.dateTo, "MMM d")}</TableCell>
+                            <TableCell className="p-0.5 text-xs" rowSpan={g.children.length}>{g.incident || "-"}</TableCell>
+                              
+                          </>
+                        ) : null}
+
+                        <TableCell className="p-0.5 text-xs">{c.time || "-"}</TableCell>
+                        <TableCell className="p-0.5 text-xs">{c.dateFrom || "-"}</TableCell>
+                        <TableCell className="p-0.5 text-xs">{c.dateTo || "-"}</TableCell>
+                        <TableCell className="p-0.5 text-xs">{c.purpose || "-"}</TableCell>
+                        <TableCell className="p-0.5 text-xs">{c.vehicle || "-"}</TableCell>
+                        <TableCell className="p-0.5 text-xs text-right">{Number(c.local || 0).toFixed(2)}</TableCell>
+                        <TableCell className="p-0.5 text-xs text-right">{Number(c.trip || 0).toFixed(2)}</TableCell>
+                        <TableCell className="p-0.5 text-xs text-right">{Number(c.food || 0).toFixed(2)}</TableCell>
+                        <TableCell className="p-0.5 text-xs text-right">{Number(c.hotel || 0).toFixed(2)}</TableCell>
+                        <TableCell className="p-0.5 text-xs text-right">{Number(c.others || 0).toFixed(2)}</TableCell>
+                        <TableCell className="p-0.5 text-xs text-right">{Number(c.advance || 0).toFixed(2)}</TableCell>
+                        <TableCell className="p-0.5 text-xs text-right">{net.toFixed(2)}</TableCell>
+                        <TableCell className="p-0.5 text-xs">{c.remarks || "-"}</TableCell>
+                        <TableCell className="p-0.5 text-xs">
+                          {c.attachmentUrl ? (
+                            <a href={c.attachmentUrl} target="_blank" className="text-primary underline">
+                              View
+                            </a>
+                          ) : (
+                            "-"
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  });
+            })}
+            <TableRow className="font-semibold bg-muted/30 text-xs">
+              <TableCell colSpan={16} className="p-0.5 text-right">Total Tk</TableCell>
+              <TableCell className="p-0.5 text-right">{total.toFixed(2)}</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </div>
+      <Separator className="my-4" />
+      <FooterTotal total={total} />
+    </div>
+  );
+}
+
 export function BillForm(props: Props) {
   const mode = props.mode ?? "create";
   const isView = mode === "view";
@@ -259,6 +703,8 @@ export function BillForm(props: Props) {
     (props.bill?.employeeCode ??
       (("user" in props ? (props.user as any)?.employeeCode : "") || "")
     )?.toString()?.toUpperCase?.() ?? "";
+  const effectiveEmployeeId =
+    props.bill?.employeeId ?? (("user" in props ? (props.user as any)?.id : "") || "");
 
   /* ---------- Defaults ---------- */
   const defaults: Partial<BillFormValues> = useMemo(() => {
@@ -273,10 +719,12 @@ export function BillForm(props: Props) {
           formatType === "BILL1"
             ? [{ date: new Date(), from: "", to: "", transport: "", purpose: "", amount: undefined as any }]
             : formatType === "BILL2"
-            ? [{ name:"", dateFrom:new Date(), dateTo:new Date(), purpose:"", local:undefined as any, trip:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }]
+            ? [{ name: "user" in props ? (props.user as any).name : "", dateFrom:new Date(), dateTo:new Date(), purpose:"", local:undefined as any, trip:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }]
             : formatType === "BILL3"
-            ? [{ name:"", dateFrom:new Date(), dateTo:new Date(), purpose:"", food:undefined as any, hotel:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }]
-            : [{date: new Date(),time: "",incident: "", purpose: "",meal: "",food: undefined as any,hotel: undefined as any,others: undefined as any,advance: undefined as any,remarks: ""}],
+            ? [{ name: "user" in props ? (props.user as any).name : "", dateFrom:new Date(), dateTo:new Date(), purpose:"", food:undefined as any, hotel:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }]
+            : formatType === "BILL5"
+              ? [{ name: "user" in props ? (props.user as any).name : "", dateFrom: new Date(), dateTo: new Date(), incident: "", children: [{ purpose: "", time: "", dateFrom: "", dateTo: "", vehicle: "", local: undefined as any, trip: undefined as any, food: undefined as any, hotel: undefined as any, others: undefined as any, advance: undefined as any, remarks: "" }] } as any]
+            : [{date: new Date(),time: "",incident: "", purpose: "",vehicle: "",food: undefined as any,hotel: undefined as any,others: undefined as any,advance: undefined as any,remarks: ""}],
       };
     }
 
@@ -314,6 +762,29 @@ export function BillForm(props: Props) {
         }),
       };
     }
+    if (initialFormat === "BILL5") {
+      // Group existing bill items into parents by parentName (best-effort)
+      const groups: Record<string, any> = {};
+      b.items.forEach((it) => {
+        try {
+          const parsed = decB5Child(it.purpose as string);
+          const key = parsed.parentName || parsed.incident || String(it.date);
+          groups[key] ??= { name: parsed.parentName || "", dateFrom: safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date), incident: parsed.incident, children: [] };
+          groups[key].children.push({ purpose: parsed.purpose, time: parsed.time || "", dateFrom: parsed.dateFrom || "", dateTo: parsed.dateTo || "", vehicle: parsed.vehicle, local: parsed.local, trip: parsed.trip, food: parsed.food, hotel: parsed.hotel, others: parsed.others, advance: parsed.advance, remarks: parsed.remarks });
+        } catch {
+          // fallback: push as single parent->child
+          const key = String(it.date) + JSON.stringify(it);
+          groups[key] ??= { name: "", dateFrom: safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date), incident: "", children: [] };
+          groups[key].children.push({ purpose: it.purpose, time: "", dateFrom: "", dateTo: "", meal: "", local: 0, trip:0, food:0, hotel:0, others:0, advance:0, remarks: "" });
+        }
+      });
+      return {
+        billId: b.id, companyName:b.companyName, companyAddress:b.companyAddress,
+        employeeName:b.employeeName, employeeDesignation:b.employeeDesignation ?? "",
+        supervisorId: (b as any).supervisorId ?? "",
+        items: Object.values(groups) as RowB5[],
+      };
+    }
     // BILL4
     return {
       billId: b.id, companyName:b.companyName, companyAddress:b.companyAddress,
@@ -326,7 +797,7 @@ export function BillForm(props: Props) {
           time: p.time,
           incident: p.incident,
           purpose: p.purpose,
-          meal: p.meal,
+          vehicle: p.vehicle,
           food: p.food,
           hotel: p.hotel,
           others: p.others,
@@ -335,16 +806,20 @@ export function BillForm(props: Props) {
         };
       }),
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [props, formatType]);
 
   const form = useForm<BillFormValues>({ resolver: zodResolver(billFormSchema), defaultValues: defaults, mode: "onChange" });
   const { control, handleSubmit, reset } = form;
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
 
-  // Files for BILL2/BILL3/BILL4 rows (one file per row)
-  const [rowFiles, setRowFiles] = useState<(File | null)[]>(
-    Array.isArray(defaults.items) ? Array(defaults.items.length).fill(null) : []
+  // Reset form when defaults change (e.g., user data loads or bill format changes)
+  useEffect(() => {
+    reset(defaults);
+  }, [defaults, reset]);
+
+  // Files for attachments: for BILL5 we need nested arrays (parent -> child files)
+  const [rowFiles, setRowFiles] = useState<(File | null)[][]>(
+    Array.isArray(defaults.items) ? (defaults.items as any[]).map((it) => (it.children ? Array(it.children.length).fill(null) : [null])) : []
   );
 
   // Watch rows for live totals
@@ -373,6 +848,14 @@ export function BillForm(props: Props) {
       }, 0);
       return { total, words: numberToWords(total) + " Only" };
     }
+      if (formatType === "BILL5") {
+        const parents = (watchedItems as RowB5[]) || [];
+        const total = parents.reduce((acc, p) => {
+          const sumChildren = (p.children || []).reduce((s, c) => s + ((Number(c.local)||0)+(Number(c.trip)||0)+(Number(c.food)||0)+(Number(c.hotel)||0)+(Number(c.others)||0) - (Number(c.advance)||0)), 0);
+          return acc + sumChildren;
+        }, 0);
+        return { total, words: numberToWords(total) + " Only" };
+      }
     // BILL4
     const rows = (watchedItems as RowB4[]) || [];
     const total = rows.reduce((acc, r) => {
@@ -385,6 +868,7 @@ export function BillForm(props: Props) {
   // Supervisor dropdown data (client-side fetch)
   const isSupervisorUser = "user" in props && (props.user as any)?.role === "supervisor";
   const [supervisors, setSupervisors] = useState<{ id: string; name: string; email?: string }[]>([]);
+  const makeSingleAttachmentRow = (): (File | null)[][] => [[null as File | null]];
   useEffect(() => {
     if (!isSupervisorUser) return;
     fetch("/api/supervisors")
@@ -403,7 +887,14 @@ export function BillForm(props: Props) {
     const len = fields.length;
     setRowFiles((prev) => {
       const next = prev.slice(0, len);
-      while (next.length < len) next.push(null);
+      while (next.length < len) next.push([null]);
+      // ensure inner arrays match existing children count if possible
+      next.forEach((arr, idx) => {
+        const children = (fields[idx]?.children ?? []);
+        const target = Array.isArray(children) ? children.length : 1;
+        while ((arr?.length ?? 0) < target) arr.push(null);
+        if (arr.length > target) arr.splice(target);
+      });
       return next;
     });
   }, [formatType, fields.length, isView]);
@@ -417,13 +908,16 @@ export function BillForm(props: Props) {
       setRowFiles([]);
     } else if (formatType === "BILL2") {
       reset({ ...cur, items: [{ name:"", dateFrom:new Date(), dateTo:new Date(), purpose:"", local:undefined as any, trip:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }] });
-      setRowFiles([null]);
+      setRowFiles(makeSingleAttachmentRow());
     } else if (formatType === "BILL3") {
       reset({ ...cur, items: [{ name:"", dateFrom:new Date(), dateTo:new Date(), purpose:"", food:undefined as any, hotel:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }] });
-      setRowFiles([null]);
-    } else {
-      reset({ ...cur, items: [{ date:new Date(), time:"", incident:"", purpose:"",  meal: "",  food:undefined as any, hotel:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }] });
-      setRowFiles([null]);
+      setRowFiles(makeSingleAttachmentRow());
+    } else if (formatType === "BILL4") {
+      reset({ ...cur, items: [{ date:new Date(), time:"", incident:"", purpose:"",  vehicle: "",  food:undefined as any, hotel:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }] });
+      setRowFiles(makeSingleAttachmentRow());
+    } else if (formatType === "BILL5") {
+      reset({ ...cur, items: [{ name: "", dateFrom:new Date(), dateTo:new Date(), incident:"", children: [{ purpose: "", time: "", dateFrom: "", dateTo: "", vehicle: "", local: undefined as any, trip: undefined as any, food: undefined as any, hotel: undefined as any, others: undefined as any, advance: undefined as any, remarks: "" }] } as any] });
+      setRowFiles(makeSingleAttachmentRow());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formatType]);
@@ -432,66 +926,92 @@ export function BillForm(props: Props) {
   const validateAll = (): boolean => {
     let ok = true;
     const setError = form.setError;
+    const reasons: string[] = [];
     const top = form.getValues();
     const items: any[] = form.getValues("items") ?? [];
 
     // Top-level required
-    if (isEmpty(top.companyName))   { setError("companyName" as any, { type: "manual", message: "Required" }); ok = false; }
-    if (isEmpty(top.companyAddress)){ setError("companyAddress" as any, { type: "manual", message: "Required" }); ok = false; }
-    if (isEmpty(top.employeeName))  { setError("employeeName" as any, { type: "manual", message: "Required" }); ok = false; }
+    if (isEmpty(top.companyName))   { setError("companyName" as any, { type: "manual", message: "Required" }); ok = false; reasons.push("companyName: required"); }
+    if (isEmpty(top.companyAddress)){ setError("companyAddress" as any, { type: "manual", message: "Required" }); ok = false; reasons.push("companyAddress: required"); }
+    if (isEmpty(top.employeeName))  { setError("employeeName" as any, { type: "manual", message: "Required" }); ok = false; reasons.push("employeeName: required"); }
 
     // Ensure we have a code to submit
-    if (!effectiveEmployeeCode) {
-      if (typeof window !== "undefined") window.alert("Employee Code is missing on this form.");
+    if (!effectiveEmployeeCode && !effectiveEmployeeId) {
+      reasons.push("employee identifier missing (employeeCode or employeeId)");
+      if (typeof window !== "undefined") window.alert("Employee Code or Employee ID is missing on this form.");
       ok = false;
     }
 
     // Rows per format
     items.forEach((r, i) => {
       if (formatType === "BILL1") {
-        if (!r.date)                     { setError(`items.${i}.date` as any, { type: "manual", message: "Pick a date" }); ok = false; }
-        if (isEmpty(r.from))             { setError(`items.${i}.from` as any, { type: "manual", message: "Required" }); ok = false; }
-        if (isEmpty(r.to))               { setError(`items.${i}.to` as any, { type: "manual", message: "Required" }); ok = false; }
-        if (isEmpty(r.transport))        { setError(`items.${i}.transport` as any, { type: "manual", message: "Required" }); ok = false; }
-        if (isEmpty(r.purpose))          { setError(`items.${i}.purpose` as any, { type: "manual", message: "Required" }); ok = false; }
-        if (!(asNum(r.amount) > 0))      { setError(`items.${i}.amount` as any, { type: "manual", message: "Must be > 0" }); ok = false; }
+        if (!r.date)                     { setError(`items.${i}.date` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.date: required`); }
+        if (isEmpty(r.from))             { setError(`items.${i}.from` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.from: required`); }
+        if (isEmpty(r.to))               { setError(`items.${i}.to` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.to: required`); }
+        if (isEmpty(r.transport))        { setError(`items.${i}.transport` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.transport: required`); }
+        if (isEmpty(r.purpose))          { setError(`items.${i}.purpose` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.purpose: required`); }
+        if (!(asNum(r.amount) > 0))      { setError(`items.${i}.amount` as any, { type: "manual", message: "Must be > 0" }); ok = false; reasons.push(`items.${i}.amount: must be > 0`); }
       } else if (formatType === "BILL2") {
         const local = asNum(r.local), trip = asNum(r.trip), others = asNum(r.others), advance = asNum(r.advance);
         const total = (Number(local)||0) + (Number(trip)||0) + (Number(others)||0);
-        if (isEmpty(r.name))             { setError(`items.${i}.name` as any, { type: "manual", message: "Required" }); ok = false; }
-        if (!r.dateFrom)                 { setError(`items.${i}.dateFrom` as any, { type: "manual", message: "Pick a date" }); ok = false; }
-        if (!r.dateTo)                   { setError(`items.${i}.dateTo` as any, { type: "manual", message: "Pick a date" }); ok = false; }
-        if (isEmpty(r.purpose))          { setError(`items.${i}.purpose` as any, { type: "manual", message: "Required" }); ok = false; }
-        if (!(total > 0))                { setError(`items.${i}.local` as any,  { type: "manual", message: "Enter at least one amount" }); ok = false; }
+        if (isEmpty(r.name))             { setError(`items.${i}.name` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.name: required`); }
+        if (!r.dateFrom)                 { setError(`items.${i}.dateFrom` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.dateFrom: required`); }
+        if (!r.dateTo)                   { setError(`items.${i}.dateTo` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.dateTo: required`); }
+        if (isEmpty(r.purpose))          { setError(`items.${i}.purpose` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.purpose: required`); }
+        if (!(total > 0))                { setError(`items.${i}.local` as any,  { type: "manual", message: "Enter at least one amount" }); ok = false; reasons.push(`items.${i}: enter at least one amount`); }
         if (Number.isFinite(advance) && advance > total) {
-          setError(`items.${i}.advance` as any, { type: "manual", message: "Advance cannot exceed total" }); ok = false;
+          setError(`items.${i}.advance` as any, { type: "manual", message: "Advance cannot exceed total" }); ok = false; reasons.push(`items.${i}.advance: cannot exceed total`);
         }
       } else if (formatType === "BILL3") {
         const food = asNum(r.food), hotel = asNum(r.hotel), others = asNum(r.others), advance = asNum(r.advance);
         const total = (Number(food)||0) + (Number(hotel)||0) + (Number(others)||0);
-        if (isEmpty(r.name))             { setError(`items.${i}.name` as any, { type: "manual", message: "Required" }); ok = false; }
-        if (!r.dateFrom)                 { setError(`items.${i}.dateFrom` as any, { type: "manual", message: "Pick a date" }); ok = false; }
-        if (!r.dateTo)                   { setError(`items.${i}.dateTo` as any, { type: "manual", message: "Pick a date" }); ok = false; }
-        if (isEmpty(r.purpose))          { setError(`items.${i}.purpose` as any, { type: "manual", message: "Required" }); ok = false; }
-        if (!(total > 0))                { setError(`items.${i}.food` as any,   { type: "manual", message: "Enter at least one amount" }); ok = false; }
+        if (isEmpty(r.name))             { setError(`items.${i}.name` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.name: required`); }
+        if (!r.dateFrom)                 { setError(`items.${i}.dateFrom` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.dateFrom: required`); }
+        if (!r.dateTo)                   { setError(`items.${i}.dateTo` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.dateTo: required`); }
+        if (isEmpty(r.purpose))          { setError(`items.${i}.purpose` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.purpose: required`); }
+        if (!(total > 0))                { setError(`items.${i}.food` as any,   { type: "manual", message: "Enter at least one amount" }); ok = false; reasons.push(`items.${i}: enter at least one amount`); }
         if (Number.isFinite(advance) && advance > total) {
-          setError(`items.${i}.advance` as any, { type: "manual", message: "Advance cannot exceed total" }); ok = false;
+          setError(`items.${i}.advance` as any, { type: "manual", message: "Advance cannot exceed total" }); ok = false; reasons.push(`items.${i}.advance: cannot exceed total`);
         }
+      } else if (formatType === "BILL5") {
+        // parent-level checks
+        if (isEmpty(r.name)) { setError(`items.${i}.name` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.name: required`); }
+        if (!r.dateFrom) { setError(`items.${i}.dateFrom` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.dateFrom: required`); }
+        if (!r.dateTo) { setError(`items.${i}.dateTo` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.dateTo: required`); }
+        // children validation
+        const children = (r.children || []);
+        if (!children.length) {
+          setError(`items.${i}.children` as any, { type: "manual", message: "Add at least one purpose row" }); ok = false; reasons.push(`items.${i}.children: at least one row required`);
+        }
+        children.forEach((c: RowB5Child, ci: number) => {
+          const local = asNum(c.local), trip = asNum(c.trip), food = asNum(c.food), hotel = asNum(c.hotel), others = asNum(c.others), advance = asNum(c.advance);
+          const total = (Number(local)||0) + (Number(trip)||0) + (Number(food)||0) + (Number(hotel)||0) + (Number(others)||0);
+            if (isEmpty(c.purpose)) { setError(`items.${i}.children.${ci}.purpose` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.children.${ci}.purpose: required`); }
+            if (Number.isFinite(advance) && advance > total) { setError(`items.${i}.children.${ci}.advance` as any, { type: "manual", message: "Advance cannot exceed total" }); ok = false; reasons.push(`items.${i}.children.${ci}.advance: advance > total`); }
+        });
       } else if (formatType === "BILL4") {
         const food = asNum(r.food), hotel = asNum(r.hotel), others = asNum(r.others), advance = asNum(r.advance);
         const total = (Number(food)||0) + (Number(hotel)||0) + (Number(others)||0);
-        if (!r.date)                     { setError(`items.${i}.date` as any, { type: "manual", message: "Pick a date" }); ok = false; }
-        if (isEmpty(r.time))             { setError(`items.${i}.time` as any, { type: "manual", message: "Required" }); ok = false; }
-        if (isEmpty(r.incident))         { setError(`items.${i}.incident` as any, { type: "manual", message: "Required" }); ok = false; }
-        if (isEmpty(r.purpose))          { setError(`items.${i}.purpose` as any, { type: "manual", message: "Required" }); ok = false; }
-        if (isEmpty(r.meal))             { setError(`items.${i}.meal` as any, { type: "manual", message: "Required" }); ok = false; }
-        if (!(total > 0))                { setError(`items.${i}.food` as any, { type: "manual", message: "Enter at least one amount" }); ok = false; }
+        if (!r.date)                     { setError(`items.${i}.date` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.date: required`); }
+        if (isEmpty(r.time))             { setError(`items.${i}.time` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.time: required`); }
+        if (isEmpty(r.incident))         { setError(`items.${i}.incident` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.incident: required`); }
+        if (isEmpty(r.purpose))          { setError(`items.${i}.purpose` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.purpose: required`); }
+        if (isEmpty(r.meal))             { setError(`items.${i}.meal` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.meal: required`); }
+        if (!(total > 0))                { setError(`items.${i}.food` as any, { type: "manual", message: "Enter at least one amount" }); ok = false; reasons.push(`items.${i}: enter at least one amount`); }
         if (Number.isFinite(advance) && advance > total) {
-          setError(`items.${i}.advance` as any, { type: "manual", message: "Advance cannot exceed total" }); ok = false;
+          setError(`items.${i}.advance` as any, { type: "manual", message: "Advance cannot exceed total" }); ok = false; reasons.push(`items.${i}.advance: cannot exceed total`);
         }
       }
     });
 
+    if (!ok) {
+      try { console.warn("validateAll reasons:", reasons); } catch {}
+      if (typeof window !== "undefined") {
+        const msg = reasons.length ? `Validation errors:\n- ${reasons.slice(0,10).join('\n- ')}` : "Validation failed";
+        // show concise alert with up to 10 reasons
+        window.alert(msg);
+      }
+    }
     return ok;
   };
 
@@ -512,12 +1032,13 @@ export function BillForm(props: Props) {
   const toServerFD = (data: BillFormValues) => {
     const fd = new FormData();
     if (data.billId) fd.append("billId", data.billId);
-    fd.append("companyName", data.companyName);
-    fd.append("companyAddress", data.companyAddress);
-    fd.append("employeeName", data.employeeName);
+    fd.append("companyName", (data.companyName ?? "") as string);
+    fd.append("companyAddress", (data.companyAddress ?? "") as string);
+    fd.append("employeeName", (data.employeeName ?? "") as string);
 
     // identifier auto-supplied (Employee Code)
     fd.append("employeeIdOrCode", effectiveEmployeeCode);
+    fd.append("employeeId", effectiveEmployeeId);
 
     fd.append("formatType", formatType);
 
@@ -547,7 +1068,7 @@ export function BillForm(props: Props) {
 
       // attachments
       for (let i = 0; i < rowFiles.length; i++) {
-        const f = rowFiles[i];
+        const f = (rowFiles[i] as (File | null)[] | undefined)?.[0] ?? null;
         if (f) fd.append(`attachment_${i}`, f);
       }
     } else if (formatType === "BILL3") {
@@ -567,10 +1088,10 @@ export function BillForm(props: Props) {
       fd.append("items", JSON.stringify(rows));
 
       for (let i = 0; i < rowFiles.length; i++) {
-        const f = rowFiles[i];
+        const f = (rowFiles[i] as (File | null)[] | undefined)?.[0] ?? null;
         if (f) fd.append(`attachment_${i}`, f);
       }
-    } else {
+    } else if (formatType === "BILL4") {
       // BILL4
       const rows = (data.items as RowB4[]).map((r) => {
         const packed = encB4(r);
@@ -588,8 +1109,39 @@ export function BillForm(props: Props) {
       fd.append("items", JSON.stringify(rows));
 
       for (let i = 0; i < rowFiles.length; i++) {
-        const f = rowFiles[i];
+        const f = (rowFiles[i] as (File | null)[] | undefined)?.[0] ?? null;
         if (f) fd.append(`attachment_${i}`, f);
+      }
+    } else if (formatType === "BILL5") {
+      // BILL5 (combined) — flatten parent->children into individual server rows
+      const flatRows: any[] = [];
+      const attachments: File[] = [];
+      (data.items as RowB5[]).forEach((parent) => {
+        (parent.children || []).forEach((child) => {
+          const packed = encB5Child(parent, child);
+          const sum = (Number(child.local)||0)+(Number(child.trip)||0)+(Number(child.food)||0)+(Number(child.hotel)||0)+(Number(child.others)||0);
+          const net = sum - (Number(child.advance)||0);
+          flatRows.push({
+            date: safeDate(parent.dateFrom).toISOString(),
+            from: parent.dateFrom ? format(safeDate(parent.dateFrom), "PPP") : "",
+            to: parent.dateTo ? format(safeDate(parent.dateTo), "PPP") : "",
+            transport: "__BILL5__",
+            purpose: packed,
+            amount: Number(net || 0),
+          });
+        });
+      });
+      // append items
+      fd.append("items", JSON.stringify(flatRows));
+
+      // append attachments in same flattened order
+      let idx = 0;
+      for (let p = 0; p < rowFiles.length; p++) {
+        for (let c = 0; c < (rowFiles[p] || []).length; c++) {
+          const f = (rowFiles[p] as (File | null)[] | undefined)?.[c] ?? null;
+          if (f) fd.append(`attachment_${idx}`, f);
+          idx++;
+        }
       }
     }
 
@@ -602,20 +1154,67 @@ export function BillForm(props: Props) {
   };
 
   const onSubmitFinal = (d: BillFormValues) => {
-    if (!validateAll()) return;
+    if (!validateAll()) {
+      console.warn("Bill submit blocked: validation failed", d);
+      if (typeof window !== "undefined") window.alert("Validation failed — please check required fields and try again.");
+      return;
+    }
+    // debug: log payload and totals (helps trace silent failures)
+    try { console.log("Bill submit payload items:", d.items); console.log("totals:", totals); } catch {}
     startTransition(() => submitAction(toServerFD(d)));
   };
   const onSaveDraft  = (d: BillFormValues) => {
     if (!validateAll()) return;
+    try { console.log("Bill draft payload items:", d.items); } catch {}
     startTransition(() => draftAction(toServerFD(d)));
   };
 
-  // helpers for files with append/remove
-  const appendWithFileB2 = (row: RowB2) => { append(row as any); setRowFiles((p)=>[...p, null]); };
-  const appendWithFileB3 = (row: RowB3) => { append(row as any); setRowFiles((p)=>[...p, null]); };
-  const appendWithFileB4 = (row: RowB4) => { append(row as any); setRowFiles((p)=>[...p, null]); };
+  // helpers for files with append/remove (nested for BILL5)
+  const appendWithFileB2 = (row: RowB2) => { append(row as any); setRowFiles((p)=>[...p, [null]]); };
+  const appendWithFileB3 = (row: RowB3) => { append(row as any); setRowFiles((p)=>[...p, [null]]); };
+  const appendWithFileB4 = (row: RowB4) => { append(row as any); setRowFiles((p)=>[...p, [null]]); };
+  const appendWithFileB5 = (row: RowB5) => { append(row as any); setRowFiles((p)=>[...p, [null]]); };
   const removeWithFile = (i: number) => { remove(i); setRowFiles((prev) => prev.filter((_, idx) => idx !== i)); };
-  const setRowFileAt = (i: number, f: File | null) => setRowFiles((prev) => { const next=[...prev]; next[i]=f; return next; });
+  const setRowFileAt = (...args: any[]) => {
+    // supports two signatures: (rowIndex, file) for flat editors, or (parentIndex, childIndex, file) for nested
+    let parentIndex: number, childIndex: number, f: File | null;
+    if (args.length === 2) {
+      parentIndex = args[0]; childIndex = 0; f = args[1];
+    } else {
+      parentIndex = args[0]; childIndex = args[1]; f = args[2];
+    }
+    setRowFiles((prev) => {
+      const next = prev.map((arr)=> arr.slice());
+      next[parentIndex] ??= [];
+      next[parentIndex][childIndex] = f;
+      return next;
+    });
+  };
+
+  const appendChildToParent = (parentIndex: number) => {
+    const items = form.getValues("items") || [];
+    const copy = items.map((it:any) => ({ ...it, children: Array.isArray(it.children) ? [...it.children] : [] }));
+    copy[parentIndex].children.push({ purpose: "", time: "", dateFrom: "", dateTo: "", meal: "", local: undefined as any, trip: undefined as any, food: undefined as any, hotel: undefined as any, others: undefined as any, advance: undefined as any, remarks: "" } as any);
+    setRowFiles((prev) => {
+      const next = prev.map((arr) => arr.slice());
+      next[parentIndex] ??= [];
+      next[parentIndex].push(null);
+      return next;
+    });
+    form.setValue("items", copy);
+  };
+
+  const removeChildFromParent = (parentIndex: number, childIndex: number) => {
+    const items = form.getValues("items") || [];
+    const copy = items.map((it:any) => ({ ...it, children: Array.isArray(it.children) ? [...it.children] : [] }));
+    copy[parentIndex].children.splice(childIndex, 1);
+    setRowFiles((prev) => {
+      const next = prev.map((arr) => arr.slice());
+      if (next[parentIndex]) next[parentIndex].splice(childIndex, 1);
+      return next;
+    });
+    form.setValue("items", copy);
+  };
 
   /* ---------- view mode ---------- */
   if (isView) {
@@ -628,6 +1227,7 @@ export function BillForm(props: Props) {
     if (fmt === "BILL1") return <ViewBill1 b={b} fallbackDesignation={fallbackDesignation} />;
     if (fmt === "BILL2") return <ViewBill2 b={b} fallbackDesignation={fallbackDesignation} />;
     if (fmt === "BILL3") return <ViewBill3 b={b} fallbackDesignation={fallbackDesignation} />;
+    if (fmt === "BILL5") return <ViewBill5 b={b} fallbackDesignation={fallbackDesignation} />;
     return <ViewBill4 b={b} fallbackDesignation={fallbackDesignation} />;
   }
 
@@ -636,6 +1236,7 @@ export function BillForm(props: Props) {
     <FormProvider {...form}>
       <form
         onSubmit={handleSubmit(onSubmitFinal)}
+        autoComplete="off"
         className="w-full max-w-none mx-auto space-y-6 rounded-xl border bg-white p-6 md:p-8 shadow-sm"
       >
         {/* Hidden bill id if editing */}
@@ -643,26 +1244,27 @@ export function BillForm(props: Props) {
 
         {/* Hidden: actions.ts expects employeeIdOrCode; filled automatically from current user or bill */}
         <input type="hidden" name="employeeIdOrCode" value={effectiveEmployeeCode} />
+        <input type="hidden" name="employeeId" value={effectiveEmployeeId} />
 
         <div className="grid gap-4 md:grid-cols-2">
           <FormField control={control} name="companyName" render={({ field }) => (
             <FormItem>
               <FormLabel>Company Name</FormLabel>
-              <FormControl><Input {...field} required /></FormControl>
+              <FormControl><Input {...field} autoComplete="off" required /></FormControl>
               <FormMessage/>
             </FormItem>
           )}/>
           <FormField control={control} name="companyAddress" render={({ field }) => (
             <FormItem>
               <FormLabel>Company Address</FormLabel>
-              <FormControl><Input {...field} required /></FormControl>
+              <FormControl><Input {...field} autoComplete="off" required /></FormControl>
               <FormMessage/>
             </FormItem>
           )}/>
           <FormField control={control} name="employeeName" render={({ field }) => (
             <FormItem>
               <FormLabel>Employee Name</FormLabel>
-              <FormControl><Input {...field} required /></FormControl>
+              <FormControl><Input {...field} autoComplete="off" required /></FormControl>
               <FormMessage/>
             </FormItem>
           )}/>
@@ -677,7 +1279,7 @@ export function BillForm(props: Props) {
             <FormItem className="md:col-span-2">
               <FormLabel>Designation</FormLabel>
               <FormControl>
-                <Input {...field} placeholder="(optional for display; not submitted)" />
+                <Input {...field} autoComplete="off" placeholder="(optional for display; not submitted)" />
               </FormControl>
               <FormMessage/>
             </FormItem>
@@ -695,6 +1297,7 @@ export function BillForm(props: Props) {
             <option value="BILL2">Bill-2 (Local/Trip/Others/Advance)</option>
             <option value="BILL3">Bill-3 (Food/Hotel/Others/Advance)</option>
             <option value="BILL4">Bill-4 (Date/Time/Incident + Food/Hotel/Others/Advance)</option>
+            <option value="BILL5">Bill-5 (Combined: local/trip + food/hotel + incident/time)</option>
           </select>
         </div>
 
@@ -707,8 +1310,8 @@ export function BillForm(props: Props) {
             fields={fields}
             append={appendWithFileB2}
             remove={removeWithFile}
-            onPickFile={setRowFileAt}
-            files={rowFiles}
+            onPickFile={(i,f)=> setRowFileAt(i,f)}
+            files={rowFiles.map((r)=> r?.[0] ?? null)}
           />
         )}
         {formatType === "BILL3" && (
@@ -717,8 +1320,19 @@ export function BillForm(props: Props) {
             fields={fields}
             append={appendWithFileB3}
             remove={removeWithFile}
+            onPickFile={(i,f)=> setRowFileAt(i,f)}
+            files={rowFiles.map((r)=> r?.[0] ?? null)}
+          />
+        )}
+        {formatType === "BILL5" && (
+          <EditorBill5
+            control={control}
+            fields={fields}
+            append={appendWithFileB5}
+            remove={removeWithFile}
             onPickFile={setRowFileAt}
             files={rowFiles}
+            employeeName={"user" in props ? (props.user as any).name : ""}
           />
         )}
         {formatType === "BILL4" && (
@@ -727,8 +1341,8 @@ export function BillForm(props: Props) {
             fields={fields}
             append={appendWithFileB4}
             remove={removeWithFile}
-            onPickFile={setRowFileAt}
-            files={rowFiles}
+            onPickFile={(i,f)=> setRowFileAt(i,f)}
+            files={rowFiles.map((r)=> r?.[0] ?? null)}
           />
         )}
 
@@ -801,6 +1415,7 @@ function HeaderInfo({ b, fallbackDesignation }: { b: BillViewData; fallbackDesig
       <div><p className="text-xs text-muted-foreground">Company Name</p><p className="font-medium">{b.companyName}</p></div>
       <div><p className="text-xs text-muted-foreground">Company Address</p><p className="font-medium">{b.companyAddress}</p></div>
       <div><p className="text-xs text-muted-foreground">Employee Name</p><p className="font-medium">{b.employeeName}</p></div>
+      <div><p className="text-xs text-muted-foreground">Department</p><p className="font-medium">{b.employeeDepartment ?? "-"}</p></div>
       <div><p className="text-xs text-muted-foreground">Employee Code</p><p className="font-medium">{b.employeeCode ?? "-"}</p></div>
       <div className="md:col-span-2"><p className="text-xs text-muted-foreground">Designation</p><p className="font-medium">{designation}</p></div>
     </div>
@@ -1057,7 +1672,7 @@ function ViewBill4({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
                   <TableCell className="p-1 min-w-[220px]">{r.incident || "-"}</TableCell>
                   <TableCell className="p-1 min-w-[240px]">{r.purpose}</TableCell>
                   <TableCell className="p-1 min-w-[200px]">
-                    {r.meal || "-"}
+                    {r.vehicle || "-"}
                   </TableCell>
                   <TableCell className="p-1 text-right">{Number(r.food||0).toFixed(2)}</TableCell>
                   <TableCell className="p-1 text-right">{Number(r.hotel||0).toFixed(2)}</TableCell>
@@ -1762,7 +2377,7 @@ function EditorBill4({
           time: "",
           incident: "",
           purpose: "",
-          meal: "",
+          vehicle: "",
           food: undefined as any,
           hotel: undefined as any,
           others: undefined as any,
