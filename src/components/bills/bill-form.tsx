@@ -438,7 +438,6 @@ function EditorBill5({ control, fields, append, remove, onPickFile, files, emplo
           <TableHeader>
             <TableRow>
               <TableHead>SL</TableHead>
-              <TableHead className="min-w-[180px]">Name</TableHead>
               <TableHead>Date From</TableHead>
               <TableHead>Date To</TableHead>
               <TableHead className="min-w-[220px]">Incident</TableHead>
@@ -450,11 +449,6 @@ function EditorBill5({ control, fields, append, remove, onPickFile, files, emplo
             {fields.map((f, i) => (
               <TableRow key={f.id ?? i}>
                 <TableCell className="p-1 pt-3 font-medium">{i+1}</TableCell>
-                <TableCell className="p-1 min-w-[180px]">
-                  <FormField control={control} name={`items.${i}.name`} render={({ field }) => (
-                    <FormItem><FormControl><Input placeholder="Name" {...field} autoComplete="off" className="w-[180px]" /></FormControl><FormMessage/></FormItem>
-                  )} />
-                </TableCell>
                 {(["dateFrom","dateTo"] as const).map((k) => (
                   <TableCell className="p-1" key={k}>
                     <FormField control={control} name={`items.${i}.${k}`} render={({ field }) => (
@@ -507,7 +501,18 @@ function EditorBill5({ control, fields, append, remove, onPickFile, files, emplo
 }
 
 /* NEW: View for Bill-5 */
-function ViewBill5({ b, fallbackDesignation }: { b: BillViewData; fallbackDesignation?: string }) {
+function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fallbackDesignation?: string; viewerRole?: string }) {
+  const [mounted, setMounted] = useState(false);
+  const showNameColumn = viewerRole === "management" || viewerRole === "accounts" || viewerRole === "supervisor";
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return <div className="rounded-xl border bg-white p-6 shadow-sm" />;
+  }
+
   const groups: Array<{
     name: string;
     dateFrom: Date;
@@ -604,7 +609,7 @@ function ViewBill5({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
           <TableHeader>
             <TableRow>
               <TableHead className="text-xs">No.</TableHead>
-              <TableHead className="text-xs min-w-[100px]">Name</TableHead>
+              {showNameColumn ? <TableHead className="text-xs min-w-[100px]">Name</TableHead> : null}
               <TableHead className="text-xs">Date From</TableHead>
               <TableHead className="text-xs">Date To</TableHead>
               <TableHead className="text-xs min-w-[120px]">Incident</TableHead>
@@ -639,7 +644,7 @@ function ViewBill5({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
                         {ci === 0 ? (
                           <>
                             <TableCell className="p-0.5 text-xs" rowSpan={g.children.length}>{i + 1}</TableCell>
-                            <TableCell className="p-0.5 text-xs" rowSpan={g.children.length}>{g.name || "-"}</TableCell>
+                            {showNameColumn ? <TableCell className="p-0.5 text-xs" rowSpan={g.children.length}>{g.name || "-"}</TableCell> : null}
                             <TableCell className="p-0.5 text-xs" rowSpan={g.children.length}>{format(g.dateFrom, "MMM d")}</TableCell>
                             <TableCell className="p-0.5 text-xs" rowSpan={g.children.length}>{format(g.dateTo, "MMM d")}</TableCell>
                             <TableCell className="p-0.5 text-xs" rowSpan={g.children.length}>{g.incident || "-"}</TableCell>
@@ -674,8 +679,10 @@ function ViewBill5({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
                   });
             })}
             <TableRow className="font-semibold bg-muted/30 text-xs">
-              <TableCell colSpan={16} className="p-0.5 text-right">Total Tk</TableCell>
+              <TableCell colSpan={showNameColumn ? 16 : 15} className="p-0.5 text-right">Total Tk</TableCell>
               <TableCell className="p-0.5 text-right">{total.toFixed(2)}</TableCell>
+              <TableCell className="p-0.5 text-xs">-</TableCell>
+              <TableCell className="p-0.5 text-xs">-</TableCell>
             </TableRow>
           </TableBody>
         </Table>
@@ -959,9 +966,6 @@ export function BillForm(props: Props) {
         if (!r.dateTo)                   { setError(`items.${i}.dateTo` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.dateTo: required`); }
         if (isEmpty(r.purpose))          { setError(`items.${i}.purpose` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.purpose: required`); }
         if (!(total > 0))                { setError(`items.${i}.local` as any,  { type: "manual", message: "Enter at least one amount" }); ok = false; reasons.push(`items.${i}: enter at least one amount`); }
-        if (Number.isFinite(advance) && advance > total) {
-          setError(`items.${i}.advance` as any, { type: "manual", message: "Advance cannot exceed total" }); ok = false; reasons.push(`items.${i}.advance: cannot exceed total`);
-        }
       } else if (formatType === "BILL3") {
         const food = asNum(r.food), hotel = asNum(r.hotel), others = asNum(r.others), advance = asNum(r.advance);
         const total = (Number(food)||0) + (Number(hotel)||0) + (Number(others)||0);
@@ -970,12 +974,8 @@ export function BillForm(props: Props) {
         if (!r.dateTo)                   { setError(`items.${i}.dateTo` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.dateTo: required`); }
         if (isEmpty(r.purpose))          { setError(`items.${i}.purpose` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.purpose: required`); }
         if (!(total > 0))                { setError(`items.${i}.food` as any,   { type: "manual", message: "Enter at least one amount" }); ok = false; reasons.push(`items.${i}: enter at least one amount`); }
-        if (Number.isFinite(advance) && advance > total) {
-          setError(`items.${i}.advance` as any, { type: "manual", message: "Advance cannot exceed total" }); ok = false; reasons.push(`items.${i}.advance: cannot exceed total`);
-        }
       } else if (formatType === "BILL5") {
         // parent-level checks
-        if (isEmpty(r.name)) { setError(`items.${i}.name` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.name: required`); }
         if (!r.dateFrom) { setError(`items.${i}.dateFrom` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.dateFrom: required`); }
         if (!r.dateTo) { setError(`items.${i}.dateTo` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.dateTo: required`); }
         // children validation
@@ -987,7 +987,6 @@ export function BillForm(props: Props) {
           const local = asNum(c.local), trip = asNum(c.trip), food = asNum(c.food), hotel = asNum(c.hotel), others = asNum(c.others), advance = asNum(c.advance);
           const total = (Number(local)||0) + (Number(trip)||0) + (Number(food)||0) + (Number(hotel)||0) + (Number(others)||0);
             if (isEmpty(c.purpose)) { setError(`items.${i}.children.${ci}.purpose` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.children.${ci}.purpose: required`); }
-            if (Number.isFinite(advance) && advance > total) { setError(`items.${i}.children.${ci}.advance` as any, { type: "manual", message: "Advance cannot exceed total" }); ok = false; reasons.push(`items.${i}.children.${ci}.advance: advance > total`); }
         });
       } else if (formatType === "BILL4") {
         const food = asNum(r.food), hotel = asNum(r.hotel), others = asNum(r.others), advance = asNum(r.advance);
@@ -998,9 +997,6 @@ export function BillForm(props: Props) {
         if (isEmpty(r.purpose))          { setError(`items.${i}.purpose` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.purpose: required`); }
         if (isEmpty(r.meal))             { setError(`items.${i}.meal` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.meal: required`); }
         if (!(total > 0))                { setError(`items.${i}.food` as any, { type: "manual", message: "Enter at least one amount" }); ok = false; reasons.push(`items.${i}: enter at least one amount`); }
-        if (Number.isFinite(advance) && advance > total) {
-          setError(`items.${i}.advance` as any, { type: "manual", message: "Advance cannot exceed total" }); ok = false; reasons.push(`items.${i}.advance: cannot exceed total`);
-        }
       }
     });
 
@@ -1227,7 +1223,7 @@ export function BillForm(props: Props) {
     if (fmt === "BILL1") return <ViewBill1 b={b} fallbackDesignation={fallbackDesignation} />;
     if (fmt === "BILL2") return <ViewBill2 b={b} fallbackDesignation={fallbackDesignation} />;
     if (fmt === "BILL3") return <ViewBill3 b={b} fallbackDesignation={fallbackDesignation} />;
-    if (fmt === "BILL5") return <ViewBill5 b={b} fallbackDesignation={fallbackDesignation} />;
+    if (fmt === "BILL5") return <ViewBill5 b={b} fallbackDesignation={fallbackDesignation} viewerRole={(viewer as any)?.role} />;
     return <ViewBill4 b={b} fallbackDesignation={fallbackDesignation} />;
   }
 
