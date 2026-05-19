@@ -65,49 +65,59 @@ export default async function BillsLayout({
             <SidebarContent>
                  {(["employee", "supervisor"] as const).includes(user.role as any) && (
                    <SidebarGroup>
-                      <Button asChild className="w-full justify-start" size="lg">
+                      <Button asChild className="w-full justify-start group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0" size="lg">
                           <Link href="/bills/new">
                               <PlusCircle />
-                              New Bill
+                              <span className="group-data-[collapsible=icon]:hidden">New Bill</span>
                           </Link>
                       </Button>
                    </SidebarGroup>
                  )}
                 <SidebarMenu>
                     <SidebarMenuItem>
-                        <Link href="/dashboard" className="flex h-8 items-center gap-2 rounded-md px-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
-                            <LayoutGrid />
-                            Dashboard
-                        </Link>
+                        <SidebarMenuButton asChild tooltip="Dashboard">
+                            <Link href="/dashboard">
+                                <LayoutGrid />
+                                <span>Dashboard</span>
+                            </Link>
+                        </SidebarMenuButton>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <Link href="/bills" className="flex h-8 items-center gap-2 rounded-md px-2 text-sm bg-sidebar-accent text-sidebar-accent-foreground">
-                            <FileText />
-                            Bills
-                        </Link>
+                        <SidebarMenuButton asChild isActive tooltip="Bills">
+                            <Link href="/bills">
+                                <FileText />
+                                <span>Bills</span>
+                            </Link>
+                        </SidebarMenuButton>
                         {pendingCount > 0 && <SidebarMenuBadge>{pendingCount}</SidebarMenuBadge>}
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <Link href="/reports" className="flex h-8 items-center gap-2 rounded-md px-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
-                            <BarChart />
-                            Reports
-                        </Link>
+                        <SidebarMenuButton asChild tooltip="Reports">
+                            <Link href="/reports">
+                                <BarChart />
+                                <span>Reports</span>
+                            </Link>
+                        </SidebarMenuButton>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <Link href="/team" className="flex h-8 items-center gap-2 rounded-md px-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
-                            <Users />
-                            All Employee
-                        </Link>
+                        <SidebarMenuButton asChild tooltip="All Employee">
+                            <Link href="/team">
+                                <Users />
+                                <span>All Employee</span>
+                            </Link>
+                        </SidebarMenuButton>
                     </SidebarMenuItem>
                 </SidebarMenu>
             </SidebarContent>
             <SidebarFooter>
                 <SidebarMenu>
                     <SidebarMenuItem>
-                        <Link href="/settings" className="flex h-8 items-center gap-2 rounded-md px-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
-                            <Settings />
-                            Settings
-                        </Link>
+                        <SidebarMenuButton asChild tooltip="Settings">
+                            <Link href="/settings">
+                                <Settings />
+                                <span>Settings</span>
+                            </Link>
+                        </SidebarMenuButton>
                     </SidebarMenuItem>
                 </SidebarMenu>
             </SidebarFooter>

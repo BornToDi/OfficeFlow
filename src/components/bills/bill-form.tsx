@@ -2,7 +2,7 @@
 "use client";
 
 import { useActionState, useTransition } from "react";
-import { useEffect, useMemo, useState, Fragment } from "react";
+import { useEffect, useMemo, useRef, useState, Fragment } from "react";
 import { useForm, useFieldArray, FormProvider, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -21,6 +21,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
+import { toast } from "@/hooks/use-toast";
 
 import type { User, BillStatus } from "@/lib/types";
 
@@ -299,7 +300,7 @@ const asNum = (v: any) => (v === "" || v === null || v === undefined ? NaN : Num
 
 /* ---------- Component ---------- */
 type Props =
-  | { mode?: "create"|"edit"; user: User; bill?: BillViewData }
+  | { mode?: "create"|"edit"; user: User; bill?: BillViewData; supervisors?: { id: string; name: string; email?: string }[] }
   | { mode: "view"; bill: BillViewData; user?: User };
 
 function SubmitButton({ isPending, children, disabled }: { isPending:boolean; children:React.ReactNode; disabled?:boolean }) {
@@ -426,77 +427,175 @@ function Bill5ChildTable({
 }
 
 /* NEW: Editor for Bill-5 (combined) */
-function EditorBill5({ control, fields, append, remove, onPickFile, files, employeeName }: {
-  control:any; fields:any[]; append:(r:RowB5)=>void; remove:(i:number)=>void;
-  onPickFile:(parentIndex:number, childIndex:number, f:File|null)=>void; files:(File|null)[][]; employeeName?:string;
+function EditorBill5({
+  control,
+  fields,
+  append,
+  remove,
+  onPickFile,
+  files,
+  employeeName,
+}: {
+  control: any;
+  fields: any[];
+  append: (r: RowB5) => void;
+  remove: (i: number) => void;
+  onPickFile: (parentIndex: number, childIndex: number, f: File | null) => void;
+  files: (File | null)[][];
+  employeeName?: string;
 }) {
-
   return (
-    <>
-      <div className="rounded-lg border overflow-x-auto">
-        <Table className="min-w-max">
-          <TableHeader>
-            <TableRow>
-              <TableHead>SL</TableHead>
-              <TableHead>Date From</TableHead>
-              <TableHead>Date To</TableHead>
-              <TableHead className="min-w-[220px]">Incident</TableHead>
-              <TableHead className="min-w-[640px]">Purpose (click Add row to add nested child)</TableHead>
-              <TableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {fields.map((f, i) => (
-              <TableRow key={f.id ?? i}>
-                <TableCell className="p-1 pt-3 font-medium">{i+1}</TableCell>
-                {(["dateFrom","dateTo"] as const).map((k) => (
-                  <TableCell className="p-1" key={k}>
-                    <FormField control={control} name={`items.${i}.${k}`} render={({ field }) => (
-                      <FormItem>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button type="button" variant="outline" className={cn("w-full justify-start pl-3 text-left", !field.value && "text-muted-foreground")}>
-                                {field.value ? format(new Date(field.value), "PPP") : "Pick a date"}
-                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar mode="single" selected={field.value ? new Date(field.value) : new Date()} onSelect={field.onChange} disabled={(d) => d < new Date("1900-01-01")} />
-                          </PopoverContent>
-                        </Popover>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                  </TableCell>
-                ))}
-                <TableCell className="p-1 min-w-[220px]">
-                  <FormField control={control} name={`items.${i}.incident`} render={({ field }) => (
-                    <FormItem><FormControl><Input placeholder="Incident" {...field} autoComplete="off" className="w-[220px]" /></FormControl><FormMessage/></FormItem>
-                  )} />
-                </TableCell>
-                <TableCell className="p-1">
-                  <Bill5ChildTable control={control} parentIndex={i} files={files} onPickFile={onPickFile} />
-                </TableCell>
-
-                <TableCell className="p-1 pt-3 text-right">
-                  {fields.length > 1 && (
-                    <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => remove(i)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </TableCell>
+    <div className="w-full max-w-full overflow-hidden">
+      <div className="w-full max-w-full overflow-hidden rounded-lg border">
+        <div className="w-full max-w-full overflow-x-auto">
+          <Table className="w-max min-w-[1700px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>SL</TableHead>
+                <TableHead>Date From</TableHead>
+                <TableHead>Date To</TableHead>
+                <TableHead className="min-w-[220px]">Incident</TableHead>
+                <TableHead className="min-w-[640px]">
+                  Purpose (click Add row to add nested child)
+                </TableHead>
+                <TableHead />
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+
+            <TableBody>
+              {fields.map((f, i) => (
+                <TableRow key={f.id ?? i}>
+                  <TableCell className="p-1 pt-3 font-medium">
+                    {i + 1}
+                  </TableCell>
+
+                  {(["dateFrom", "dateTo"] as const).map((k) => (
+                    <TableCell className="p-1" key={k}>
+                      <FormField
+                        control={control}
+                        name={`items.${i}.${k}`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <FormControl>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    className={cn(
+                                      "w-[150px] justify-start pl-3 text-left",
+                                      !field.value && "text-muted-foreground"
+                                    )}
+                                  >
+                                    {field.value
+                                      ? format(new Date(field.value), "PPP")
+                                      : "Pick a date"}
+                                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                  </Button>
+                                </FormControl>
+                              </PopoverTrigger>
+
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar
+                                  mode="single"
+                                  selected={
+                                    field.value
+                                      ? new Date(field.value)
+                                      : new Date()
+                                  }
+                                  onSelect={field.onChange}
+                                  disabled={(d) => d < new Date("1900-01-01")}
+                                />
+                              </PopoverContent>
+                            </Popover>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </TableCell>
+                  ))}
+
+                  <TableCell className="p-1 min-w-[220px]">
+                    <FormField
+                      control={control}
+                      name={`items.${i}.incident`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <Input
+                              placeholder="Incident"
+                              {...field}
+                              autoComplete="off"
+                              className="w-[220px]"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </TableCell>
+
+                  <TableCell className="p-1 max-w-[900px] overflow-hidden">
+                    <Bill5ChildTable
+                      control={control}
+                      parentIndex={i}
+                      files={files}
+                      onPickFile={onPickFile}
+                    />
+                  </TableCell>
+
+                  <TableCell className="p-1 pt-3 text-right">
+                    {fields.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive"
+                        onClick={() => remove(i)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </div>
 
-      <Button type="button" variant="outline" onClick={() => append({ name: employeeName || "", dateFrom: new Date(), dateTo: new Date(), incident: "", children: [{ purpose: "", time: "", dateFrom: "", dateTo: "", vehicle: "", local: undefined as any, trip: undefined as any, food: undefined as any, hotel: undefined as any, others: undefined as any, advance: undefined as any, remarks: "" }] } as any)}>
+      <Button
+        type="button"
+        variant="outline"
+        className="mt-4"
+        onClick={() =>
+          append({
+            name: employeeName || "",
+            dateFrom: new Date(),
+            dateTo: new Date(),
+            incident: "",
+            children: [
+              {
+                purpose: "",
+                time: "",
+                dateFrom: "",
+                dateTo: "",
+                vehicle: "",
+                local: undefined as any,
+                trip: undefined as any,
+                food: undefined as any,
+                hotel: undefined as any,
+                others: undefined as any,
+                advance: undefined as any,
+                remarks: "",
+              },
+            ],
+          } as any)
+        }
+      >
         <PlusCircle className="mr-2 h-4 w-4" /> Add Row
       </Button>
-    </>
+    </div>
   );
 }
 
@@ -608,25 +707,25 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="text-xs">No.</TableHead>
-              {showNameColumn ? <TableHead className="text-xs min-w-[100px]">Name</TableHead> : null}
-              <TableHead className="text-xs">Date From</TableHead>
-              <TableHead className="text-xs">Date To</TableHead>
-              <TableHead className="text-xs min-w-[120px]">Incident</TableHead>
-              <TableHead className="text-xs min-w-[70px]">Time</TableHead>
-              <TableHead className="text-xs">From</TableHead>
-              <TableHead className="text-xs">To</TableHead>
-              <TableHead className="text-xs">Purpose</TableHead>
-              <TableHead className="text-xs">Vehicle</TableHead>
-              <TableHead className="text-xs text-right">Local con</TableHead>
-              <TableHead className="text-xs text-right">Trip con</TableHead>
-              <TableHead className="text-xs text-right">Food</TableHead>
-              <TableHead className="text-xs text-right">Hotel</TableHead>
-              <TableHead className="text-xs text-right">Others</TableHead>
-              <TableHead className="text-xs text-right">Advance</TableHead>
-              <TableHead className="text-xs text-right">Net</TableHead>
-              <TableHead className="text-xs">Remarks</TableHead>
-              <TableHead className="text-xs">Attach</TableHead>
+              <TableHead className="text-sm font-semibold">No.</TableHead>
+              {showNameColumn ? <TableHead className="text-sm font-semibold min-w-[100px]">Name</TableHead> : null}
+              <TableHead className="text-sm font-semibold">Date From</TableHead>
+              <TableHead className="text-sm font-semibold">Date To</TableHead>
+              <TableHead className="text-sm font-semibold min-w-[120px]">Incident</TableHead>
+              <TableHead className="text-sm font-semibold min-w-[70px]">Time</TableHead>
+              <TableHead className="text-sm font-semibold">From</TableHead>
+              <TableHead className="text-sm font-semibold">To</TableHead>
+              <TableHead className="text-sm font-semibold">Purpose</TableHead>
+              <TableHead className="text-sm font-semibold">Vehicle</TableHead>
+              <TableHead className="text-sm font-semibold text-right">Local con</TableHead>
+              <TableHead className="text-sm font-semibold text-right">Trip con</TableHead>
+              <TableHead className="text-sm font-semibold text-right">Food</TableHead>
+              <TableHead className="text-sm font-semibold text-right">Hotel</TableHead>
+              <TableHead className="text-sm font-semibold text-right">Others</TableHead>
+              <TableHead className="text-sm font-semibold text-right">Advance</TableHead>
+              <TableHead className="text-sm font-semibold text-right">Net</TableHead>
+              <TableHead className="text-sm font-semibold">Remarks</TableHead>
+              <TableHead className="text-sm font-semibold">Attach</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -643,29 +742,29 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
                       <TableRow key={`${i}-${ci}`}>
                         {ci === 0 ? (
                           <>
-                            <TableCell className="p-0.5 text-xs" rowSpan={g.children.length}>{i + 1}</TableCell>
-                            {showNameColumn ? <TableCell className="p-0.5 text-xs" rowSpan={g.children.length}>{g.name || "-"}</TableCell> : null}
-                            <TableCell className="p-0.5 text-xs" rowSpan={g.children.length}>{format(g.dateFrom, "MMM d")}</TableCell>
-                            <TableCell className="p-0.5 text-xs" rowSpan={g.children.length}>{format(g.dateTo, "MMM d")}</TableCell>
-                            <TableCell className="p-0.5 text-xs" rowSpan={g.children.length}>{g.incident || "-"}</TableCell>
+                            <TableCell className="p-3 text-sm" rowSpan={g.children.length}>{i + 1}</TableCell>
+                            {showNameColumn ? <TableCell className="p-3 text-sm" rowSpan={g.children.length}>{g.name || "-"}</TableCell> : null}
+                            <TableCell className="p-3 text-sm" rowSpan={g.children.length}>{format(g.dateFrom, "MMM d")}</TableCell>
+                            <TableCell className="p-3 text-sm" rowSpan={g.children.length}>{format(g.dateTo, "MMM d")}</TableCell>
+                            <TableCell className="p-3 text-sm" rowSpan={g.children.length}>{g.incident || "-"}</TableCell>
                               
                           </>
                         ) : null}
 
-                        <TableCell className="p-0.5 text-xs">{c.time || "-"}</TableCell>
-                        <TableCell className="p-0.5 text-xs">{c.dateFrom || "-"}</TableCell>
-                        <TableCell className="p-0.5 text-xs">{c.dateTo || "-"}</TableCell>
-                        <TableCell className="p-0.5 text-xs">{c.purpose || "-"}</TableCell>
-                        <TableCell className="p-0.5 text-xs">{c.vehicle || "-"}</TableCell>
-                        <TableCell className="p-0.5 text-xs text-right">{Number(c.local || 0).toFixed(2)}</TableCell>
-                        <TableCell className="p-0.5 text-xs text-right">{Number(c.trip || 0).toFixed(2)}</TableCell>
-                        <TableCell className="p-0.5 text-xs text-right">{Number(c.food || 0).toFixed(2)}</TableCell>
-                        <TableCell className="p-0.5 text-xs text-right">{Number(c.hotel || 0).toFixed(2)}</TableCell>
-                        <TableCell className="p-0.5 text-xs text-right">{Number(c.others || 0).toFixed(2)}</TableCell>
-                        <TableCell className="p-0.5 text-xs text-right">{Number(c.advance || 0).toFixed(2)}</TableCell>
-                        <TableCell className="p-0.5 text-xs text-right">{net.toFixed(2)}</TableCell>
-                        <TableCell className="p-0.5 text-xs">{c.remarks || "-"}</TableCell>
-                        <TableCell className="p-0.5 text-xs">
+                        <TableCell className="p-3 text-sm">{c.time || "-"}</TableCell>
+                        <TableCell className="p-3 text-sm">{c.dateFrom || "-"}</TableCell>
+                        <TableCell className="p-3 text-sm">{c.dateTo || "-"}</TableCell>
+                        <TableCell className="p-3 text-sm">{c.purpose || "-"}</TableCell>
+                        <TableCell className="p-3 text-sm">{c.vehicle || "-"}</TableCell>
+                        <TableCell className="p-3 text-sm text-right">{Number(c.local || 0).toFixed(2)}</TableCell>
+                        <TableCell className="p-3 text-sm text-right">{Number(c.trip || 0).toFixed(2)}</TableCell>
+                        <TableCell className="p-3 text-sm text-right">{Number(c.food || 0).toFixed(2)}</TableCell>
+                        <TableCell className="p-3 text-sm text-right">{Number(c.hotel || 0).toFixed(2)}</TableCell>
+                        <TableCell className="p-3 text-sm text-right">{Number(c.others || 0).toFixed(2)}</TableCell>
+                        <TableCell className="p-3 text-sm text-right">{Number(c.advance || 0).toFixed(2)}</TableCell>
+                        <TableCell className="p-3 text-sm text-right">{net.toFixed(2)}</TableCell>
+                        <TableCell className="p-3 text-sm">{c.remarks || "-"}</TableCell>
+                        <TableCell className="p-3 text-sm">
                           {c.attachmentUrl ? (
                             <a href={c.attachmentUrl} target="_blank" className="text-primary underline">
                               View
@@ -678,11 +777,11 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
                     );
                   });
             })}
-            <TableRow className="font-semibold bg-muted/30 text-xs">
-              <TableCell colSpan={showNameColumn ? 16 : 15} className="p-0.5 text-right">Total Tk</TableCell>
-              <TableCell className="p-0.5 text-right">{total.toFixed(2)}</TableCell>
-              <TableCell className="p-0.5 text-xs">-</TableCell>
-              <TableCell className="p-0.5 text-xs">-</TableCell>
+            <TableRow className="font-semibold bg-muted/30 text-sm">
+              <TableCell colSpan={showNameColumn ? 16 : 15} className="p-3 text-right text-sm">Total Tk</TableCell>
+              <TableCell className="p-3 text-right text-sm font-bold">{total.toFixed(2)}</TableCell>
+              <TableCell className="p-3 text-sm">-</TableCell>
+              <TableCell className="p-3 text-sm">-</TableCell>
             </TableRow>
           </TableBody>
         </Table>
@@ -701,6 +800,7 @@ export function BillForm(props: Props) {
   const [submitState, submitAction] = useActionState(submitBill, undefined);
   const [draftState,  draftAction]  = useActionState(saveDraft, undefined);
   const [isPending, startTransition] = useTransition();
+  const lastDraftToastBillId = useRef<string | undefined>(undefined);
 
   const initialFormat = props.bill ? detectFormat(props.bill.items) : "BILL1";
   const [formatType, setFormatType] = useState<BillFormat>(initialFormat);
@@ -818,11 +918,24 @@ export function BillForm(props: Props) {
   const form = useForm<BillFormValues>({ resolver: zodResolver(billFormSchema), defaultValues: defaults, mode: "onChange" });
   const { control, handleSubmit, reset } = form;
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
+  const supervisors = "supervisors" in props ? props.supervisors ?? [] : [];
 
   // Reset form when defaults change (e.g., user data loads or bill format changes)
   useEffect(() => {
     reset(defaults);
   }, [defaults, reset]);
+
+  useEffect(() => {
+    if ((draftState as any)?.success && (draftState as any)?.billId && lastDraftToastBillId.current !== (draftState as any).billId) {
+      lastDraftToastBillId.current = (draftState as any).billId;
+      toast({
+        title: "Bill saved as draft",
+        description: "Your draft has been saved successfully.",
+      });
+      // Redirect to bill detail page to view/approve
+      router.push(`/bills/${(draftState as any).billId}`);
+    }
+  }, [draftState, router]);
 
   // Files for attachments: for BILL5 we need nested arrays (parent -> child files)
   const [rowFiles, setRowFiles] = useState<(File | null)[][]>(
@@ -872,17 +985,8 @@ export function BillForm(props: Props) {
     return { total, words: numberToWords(total) + " Only" };
   }, [watchedItems, formatType]);
 
-  // Supervisor dropdown data (client-side fetch)
   const isSupervisorUser = "user" in props && (props.user as any)?.role === "supervisor";
-  const [supervisors, setSupervisors] = useState<{ id: string; name: string; email?: string }[]>([]);
   const makeSingleAttachmentRow = (): (File | null)[][] => [[null as File | null]];
-  useEffect(() => {
-    if (!isSupervisorUser) return;
-    fetch("/api/supervisors")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data) => setSupervisors(data || []))
-      .catch(() => {});
-  }, [isSupervisorUser]);
 
   // keep rowFiles in sync with format and number of fields
   useEffect(() => {
@@ -1445,30 +1549,30 @@ function ViewBill1({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[50px]">No.</TableHead>
-              <TableHead className="w-[150px]">Date</TableHead>
-              <TableHead>From</TableHead>
-              <TableHead>To</TableHead>
-              <TableHead>Transport</TableHead>
-              <TableHead>Purpose</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
+              <TableHead className="w-[50px] text-sm font-semibold">No.</TableHead>
+              <TableHead className="w-[150px] text-sm font-semibold">Date</TableHead>
+              <TableHead className="text-sm font-semibold">From</TableHead>
+              <TableHead className="text-sm font-semibold">To</TableHead>
+              <TableHead className="text-sm font-semibold">Transport</TableHead>
+              <TableHead className="text-sm font-semibold">Purpose</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Amount</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {b.items.map((it, i) => (
               <TableRow key={it.id ?? i}>
-                <TableCell className="p-1 pt-3 font-medium">{i+1}</TableCell>
-                <TableCell className="p-1">{format(safeDate(it.date), "PPP")}</TableCell>
-                <TableCell className="p-1">{it.from}</TableCell>
-                <TableCell className="p-1">{it.to}</TableCell>
-                <TableCell className="p-1">{it.transport || "-"}</TableCell>
-                <TableCell className="p-1">{it.purpose}</TableCell>
-                <TableCell className="p-1 text-right">{Number(it.amount).toFixed(2)}</TableCell>
+                <TableCell className="p-3 py-3 font-medium text-sm">{i+1}</TableCell>
+                <TableCell className="p-3 text-sm">{format(safeDate(it.date), "PPP")}</TableCell>
+                <TableCell className="p-3 text-sm">{it.from}</TableCell>
+                <TableCell className="p-3 text-sm">{it.to}</TableCell>
+                <TableCell className="p-3 text-sm">{it.transport || "-"}</TableCell>
+                <TableCell className="p-3 text-sm">{it.purpose}</TableCell>
+                <TableCell className="p-3 text-right text-sm">{Number(it.amount).toFixed(2)}</TableCell>
               </TableRow>
             ))}
             <TableRow className="font-semibold bg-muted/30">
-              <TableCell colSpan={6} className="text-right">Total Tk</TableCell>
-              <TableCell className="text-right">{total.toFixed(2)}</TableCell>
+              <TableCell colSpan={6} className="text-right p-3 text-sm">Total Tk</TableCell>
+              <TableCell className="text-right p-3 text-sm font-bold">{total.toFixed(2)}</TableCell>
             </TableRow>
           </TableBody>
         </Table>
@@ -1489,19 +1593,19 @@ function ViewBill2({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>No.</TableHead>
-              <TableHead className="min-w-[180px]">Name</TableHead>
-              <TableHead>Date From</TableHead>
-              <TableHead>Date To</TableHead>
-              <TableHead className="min-w-[220px]">Purpose</TableHead>
-              <TableHead className="text-right">Local Conv.</TableHead>
-              <TableHead className="text-right">Trip Conv.</TableHead>
-              <TableHead className="text-right">Others</TableHead>
-              <TableHead className="text-right">Advance</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="text-right">Net Payable</TableHead>
-              <TableHead className="min-w-[180px]">Remarks</TableHead>
-              <TableHead className="min-w-[160px]">Attachment</TableHead>
+              <TableHead className="text-sm font-semibold">No.</TableHead>
+              <TableHead className="min-w-[180px] text-sm font-semibold">Name</TableHead>
+              <TableHead className="text-sm font-semibold">Date From</TableHead>
+              <TableHead className="text-sm font-semibold">Date To</TableHead>
+              <TableHead className="min-w-[220px] text-sm font-semibold">Purpose</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Local Conv.</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Trip Conv.</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Others</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Advance</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Total</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Net Payable</TableHead>
+              <TableHead className="min-w-[180px] text-sm font-semibold">Remarks</TableHead>
+              <TableHead className="min-w-[160px] text-sm font-semibold">Attachment</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1511,27 +1615,27 @@ function ViewBill2({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
               const url = b.items[i]?.attachmentUrl || null;
               return (
                 <TableRow key={i}>
-                  <TableCell className="p-1 pt-3 font-medium">{i+1}</TableCell>
-                  <TableCell className="p-1 min-w-[180px]">{r.name||"-"}</TableCell>
-                  <TableCell className="p-1">{format(r.dateFrom, "PPP")}</TableCell>
-                  <TableCell className="p-1">{format(r.dateTo, "PPP")}</TableCell>
-                  <TableCell className="p-1 min-w-[220px]">{r.purpose}</TableCell>
-                  <TableCell className="p-1 text-right">{Number(r.local).toFixed(2)}</TableCell>
-                  <TableCell className="p-1 text-right">{Number(r.trip).toFixed(2)}</TableCell>
-                  <TableCell className="p-1 text-right">{Number(r.others).toFixed(2)}</TableCell>
-                  <TableCell className="p-1 text-right">{Number(r.advance).toFixed(2)}</TableCell>
-                  <TableCell className="p-1 text-right">{sum.toFixed(2)}</TableCell>
-                  <TableCell className="p-1 text-right">{net.toFixed(2)}</TableCell>
-                  <TableCell className="p-1 min-w-[180px]">{r.remarks||"-"}</TableCell>
-                  <TableCell className="p-1 min-w-[160px]">
+                  <TableCell className="p-3 py-3 font-medium text-sm">{i+1}</TableCell>
+                  <TableCell className="p-3 min-w-[180px] text-sm">{r.name||"-"}</TableCell>
+                  <TableCell className="p-3 text-sm">{format(r.dateFrom, "PPP")}</TableCell>
+                  <TableCell className="p-3 text-sm">{format(r.dateTo, "PPP")}</TableCell>
+                  <TableCell className="p-3 min-w-[220px] text-sm">{r.purpose}</TableCell>
+                  <TableCell className="p-3 text-right text-sm">{Number(r.local).toFixed(2)}</TableCell>
+                  <TableCell className="p-3 text-right text-sm">{Number(r.trip).toFixed(2)}</TableCell>
+                  <TableCell className="p-3 text-right text-sm">{Number(r.others).toFixed(2)}</TableCell>
+                  <TableCell className="p-3 text-right text-sm">{Number(r.advance).toFixed(2)}</TableCell>
+                  <TableCell className="p-3 text-right text-sm">{sum.toFixed(2)}</TableCell>
+                  <TableCell className="p-3 text-right text-sm">{net.toFixed(2)}</TableCell>
+                  <TableCell className="p-3 min-w-[180px] text-sm">{r.remarks||"-"}</TableCell>
+                  <TableCell className="p-3 min-w-[160px] text-sm">
                     {url ? <a href={url} target="_blank" className="text-primary underline">View</a> : "-"}
                   </TableCell>
                 </TableRow>
               );
             })}
             <TableRow className="font-semibold bg-muted/30">
-              <TableCell colSpan={12} className="text-right">Total Tk</TableCell>
-              <TableCell className="text-right">{total.toFixed(2)}</TableCell>
+              <TableCell colSpan={12} className="text-right p-3 text-sm">Total Tk</TableCell>
+              <TableCell className="text-right p-3 text-sm font-bold">{total.toFixed(2)}</TableCell>
             </TableRow>
           </TableBody>
         </Table>
@@ -1552,19 +1656,19 @@ function ViewBill3({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>No.</TableHead>
-              <TableHead className="min-w-[180px]">Name</TableHead>
-              <TableHead>Date From</TableHead>
-              <TableHead>Date To</TableHead>
-              <TableHead className="min-w-[220px]">Purpose</TableHead>
-              <TableHead className="text-right">Food</TableHead>
-              <TableHead className="text-right">Hotel</TableHead>
-              <TableHead className="text-right">Others</TableHead>
-              <TableHead className="text-right">Advance</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="text-right">Net Payable</TableHead>
-              <TableHead className="min-w-[180px]">Remarks</TableHead>
-              <TableHead className="min-w-[160px]">Attachment</TableHead>
+              <TableHead className="text-sm font-semibold">No.</TableHead>
+              <TableHead className="min-w-[180px] text-sm font-semibold">Name</TableHead>
+              <TableHead className="text-sm font-semibold">Date From</TableHead>
+              <TableHead className="text-sm font-semibold">Date To</TableHead>
+              <TableHead className="min-w-[220px] text-sm font-semibold">Purpose</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Food</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Hotel</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Others</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Advance</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Total</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Net Payable</TableHead>
+              <TableHead className="min-w-[180px] text-sm font-semibold">Remarks</TableHead>
+              <TableHead className="min-w-[160px] text-sm font-semibold">Attachment</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1574,19 +1678,19 @@ function ViewBill3({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
               const url = b.items[i]?.attachmentUrl || null;
               return (
                 <TableRow key={i}>
-                  <TableCell className="p-1 pt-3 font-medium">{i+1}</TableCell>
-                  <TableCell className="p-1 min-w-[180px]">{r.name||"-"}</TableCell>
-                  <TableCell className="p-1">{format(r.dateFrom, "PPP")}</TableCell>
-                  <TableCell className="p-1">{format(r.dateTo, "PPP")}</TableCell>
-                  <TableCell className="p-1 min-w-[220px]">{r.purpose}</TableCell>
-                  <TableCell className="p-1 text-right">{Number(r.food).toFixed(2)}</TableCell>
-                  <TableCell className="p-1 text-right">{Number(r.hotel).toFixed(2)}</TableCell>
-                  <TableCell className="p-1 text-right">{Number(r.others).toFixed(2)}</TableCell>
-                  <TableCell className="p-1 text-right">{Number(r.advance).toFixed(2)}</TableCell>
-                  <TableCell className="p-1 text-right">{sum.toFixed(2)}</TableCell>
-                  <TableCell className="p-1 text-right">{net.toFixed(2)}</TableCell>
-                  <TableCell className="p-1 min-w-[180px]">{r.remarks||"-"}</TableCell>
-                  <TableCell className="p-1 min-w-[160px]">
+                  <TableCell className="p-3 py-3 font-medium text-sm">{i+1}</TableCell>
+                  <TableCell className="p-3 min-w-[180px] text-sm">{r.name||"-"}</TableCell>
+                  <TableCell className="p-3 text-sm">{format(r.dateFrom, "PPP")}</TableCell>
+                  <TableCell className="p-3 text-sm">{format(r.dateTo, "PPP")}</TableCell>
+                  <TableCell className="p-3 min-w-[220px] text-sm">{r.purpose}</TableCell>
+                  <TableCell className="p-3 text-right text-sm">{Number(r.food).toFixed(2)}</TableCell>
+                  <TableCell className="p-3 text-right text-sm">{Number(r.hotel).toFixed(2)}</TableCell>
+                  <TableCell className="p-3 text-right text-sm">{Number(r.others).toFixed(2)}</TableCell>
+                  <TableCell className="p-3 text-right text-sm">{Number(r.advance).toFixed(2)}</TableCell>
+                  <TableCell className="p-3 text-right text-sm">{sum.toFixed(2)}</TableCell>
+                  <TableCell className="p-3 text-right text-sm">{net.toFixed(2)}</TableCell>
+                  <TableCell className="p-3 min-w-[180px] text-sm">{r.remarks||"-"}</TableCell>
+                  <TableCell className="p-3 min-w-[160px] text-sm">
                     {url ? <a href={url} target="_blank" className="text-primary underline">View</a> : "-"}
                   </TableCell>
                 </TableRow>
@@ -1594,8 +1698,8 @@ function ViewBill3({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
             })}
 
             <TableRow className="font-semibold bg-muted/30">
-              <TableCell colSpan={13} className="text-right">Total Tk</TableCell>
-              <TableCell className="text-right">{total.toFixed(2)}</TableCell>
+              <TableCell colSpan={13} className="text-right p-3 text-sm">Total Tk</TableCell>
+              <TableCell className="text-right p-3 text-sm font-bold">{total.toFixed(2)}</TableCell>
             </TableRow>
           </TableBody>
         </Table>
@@ -1634,21 +1738,21 @@ function ViewBill4({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>SL</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead className="min-w-[140px]">Time</TableHead>
-              <TableHead className="min-w-[220px]">Incident</TableHead>
-              <TableHead className="min-w-[240px]">Purpose</TableHead>
-              <TableHead className="min-w-[200px]">
+              <TableHead className="text-sm font-semibold">SL</TableHead>
+              <TableHead className="text-sm font-semibold">Date</TableHead>
+              <TableHead className="min-w-[140px] text-sm font-semibold">Time</TableHead>
+              <TableHead className="min-w-[220px] text-sm font-semibold">Incident</TableHead>
+              <TableHead className="min-w-[240px] text-sm font-semibold">Purpose</TableHead>
+              <TableHead className="min-w-[200px] text-sm font-semibold">
                 Meal (Breakfast / Lunch / Dinner)
               </TableHead>
-              <TableHead className="text-right">Food</TableHead>
-              <TableHead className="text-right">Hotel</TableHead>
-              <TableHead className="text-right">Others</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="text-right">Advanced</TableHead>
-              <TableHead className="min-w-[200px]">Remarks</TableHead>
-              <TableHead className="min-w-[160px]">Attachment</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Food</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Hotel</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Others</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Total</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Advanced</TableHead>
+              <TableHead className="min-w-[200px] text-sm font-semibold">Remarks</TableHead>
+              <TableHead className="min-w-[160px] text-sm font-semibold">Attachment</TableHead>
             </TableRow>
           </TableHeader>
 
@@ -1662,21 +1766,21 @@ function ViewBill4({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
 
               return (
                 <TableRow key={i}>
-                  <TableCell className="p-1 pt-3 font-medium">{i+1}</TableCell>
-                  <TableCell className="p-1">{format(r.date, "PPP")}</TableCell>
-                  <TableCell className="p-1">{r.time || "-"}</TableCell>
-                  <TableCell className="p-1 min-w-[220px]">{r.incident || "-"}</TableCell>
-                  <TableCell className="p-1 min-w-[240px]">{r.purpose}</TableCell>
-                  <TableCell className="p-1 min-w-[200px]">
+                  <TableCell className="p-3 py-3 font-medium text-sm">{i+1}</TableCell>
+                  <TableCell className="p-3 text-sm">{format(r.date, "PPP")}</TableCell>
+                  <TableCell className="p-3 text-sm">{r.time || "-"}</TableCell>
+                  <TableCell className="p-3 min-w-[220px] text-sm">{r.incident || "-"}</TableCell>
+                  <TableCell className="p-3 min-w-[240px] text-sm">{r.purpose}</TableCell>
+                  <TableCell className="p-3 min-w-[200px] text-sm">
                     {r.vehicle || "-"}
                   </TableCell>
-                  <TableCell className="p-1 text-right">{Number(r.food||0).toFixed(2)}</TableCell>
-                  <TableCell className="p-1 text-right">{Number(r.hotel||0).toFixed(2)}</TableCell>
-                  <TableCell className="p-1 text-right">{Number(r.others||0).toFixed(2)}</TableCell>
-                  <TableCell className="p-1 text-right">{sum.toFixed(2)}</TableCell>
-                  <TableCell className="p-1 text-right">{Number(r.advance||0).toFixed(2)}</TableCell>
-                  <TableCell className="p-1 min-w-[200px]">{r.remarks||"-"}</TableCell>
-                  <TableCell className="p-1 min-w-[160px]">
+                  <TableCell className="p-3 text-right text-sm">{Number(r.food||0).toFixed(2)}</TableCell>
+                  <TableCell className="p-3 text-right text-sm">{Number(r.hotel||0).toFixed(2)}</TableCell>
+                  <TableCell className="p-3 text-right text-sm">{Number(r.others||0).toFixed(2)}</TableCell>
+                  <TableCell className="p-3 text-right text-sm">{sum.toFixed(2)}</TableCell>
+                  <TableCell className="p-3 text-right text-sm">{Number(r.advance||0).toFixed(2)}</TableCell>
+                  <TableCell className="p-3 min-w-[200px] text-sm">{r.remarks||"-"}</TableCell>
+                  <TableCell className="p-3 min-w-[160px] text-sm">
                     {url ? (
                       <a
                         href={url}
@@ -1693,8 +1797,8 @@ function ViewBill4({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
 
             <TableRow className="font-semibold bg-muted/30">
               {/* 13 visible columns above; span label vs value */}
-              <TableCell colSpan={11} className="text-right">Total Tk</TableCell>
-              <TableCell className="text-right" colSpan={2}>
+              <TableCell colSpan={11} className="text-right p-3 text-sm">Total Tk</TableCell>
+              <TableCell className="text-right p-3 text-sm font-bold" colSpan={2}>
                 {total.toFixed(2)}
               </TableCell>
             </TableRow>
@@ -1722,21 +1826,21 @@ function EditorBill1({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[50px]">No.</TableHead>
-              <TableHead className="w-[150px]">Date</TableHead>
-              <TableHead>From</TableHead>
-              <TableHead>To</TableHead>
-              <TableHead>Transport</TableHead>
-              <TableHead>Purpose</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
+              <TableHead className="w-[50px] text-sm font-semibold">No.</TableHead>
+              <TableHead className="w-[150px] text-sm font-semibold">Date</TableHead>
+              <TableHead className="text-sm font-semibold">From</TableHead>
+              <TableHead className="text-sm font-semibold">To</TableHead>
+              <TableHead className="text-sm font-semibold">Transport</TableHead>
+              <TableHead className="text-sm font-semibold">Purpose</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Amount</TableHead>
               <TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
             {fields.map((f,i)=>(
               <TableRow key={f?.id ?? i}>
-                <TableCell className="p-1 pt-3 font-medium">{i+1}</TableCell>
-                <TableCell className="p-1">
+                <TableCell className="p-3 py-3 font-medium text-sm">{i+1}</TableCell>
+                <TableCell className="p-3">
                   <FormField control={control} name={`items.${i}.date`} render={({ field })=>(
                     <FormItem>
                       <Popover>
@@ -1766,14 +1870,14 @@ function EditorBill1({
                     )}/>
                   </TableCell>
                 ))}
-                <TableCell className="p-1">
+                <TableCell className="p-3">
                   <FormField control={control} name={`items.${i}.amount`} render={({ field })=>(
                     <FormItem>
                       <FormControl>
                         <Input
                           type="number"
                           step="0.01"
-                          className="no-spinner text-right"
+                          className="no-spinner text-right text-sm"
                           required
                           value={field.value ?? ""}
                           onChange={(e)=> field.onChange(e.target.value==="" ? undefined : Number(e.target.value))}
@@ -1783,7 +1887,7 @@ function EditorBill1({
                     </FormItem>
                   )}/>
                 </TableCell>
-                <TableCell className="p-1 pt-3 text-right">
+                <TableCell className="p-3 py-3 text-right">
                   {fields.length>1 && (
                     <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={()=>remove(i)}>
                       <Trash2 className="h-4 w-4" />
@@ -1793,8 +1897,8 @@ function EditorBill1({
               </TableRow>
             ))}
             <TableRow className="font-semibold bg-muted/30">
-              <TableCell colSpan={6} className="text-right">Total Tk</TableCell>
-              <TableCell className="text-right">{sum.toFixed(2)}</TableCell>
+              <TableCell colSpan={6} className="text-right p-3 text-sm">Total Tk</TableCell>
+              <TableCell className="text-right p-3 text-sm font-bold">{sum.toFixed(2)}</TableCell>
               <TableCell />
             </TableRow>
           </TableBody>
@@ -1823,19 +1927,19 @@ function EditorBill2({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>No.</TableHead>
-              <TableHead className="min-w-[180px]">Name</TableHead>
-              <TableHead>Date From</TableHead>
-              <TableHead>Date To</TableHead>
-              <TableHead className="min-w-[220px]">Purpose</TableHead>
-              <TableHead className="text-right">Local Conv.</TableHead>
-              <TableHead className="text-right">Trip Conv.</TableHead>
-              <TableHead className="text-right">Others</TableHead>
-              <TableHead className="text-right">Advance</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="text-right">Net Payable</TableHead>
-              <TableHead className="min-w-[180px]">Remarks</TableHead>
-              <TableHead className="min-w-[160px]">Attachment</TableHead>
+              <TableHead className="text-sm font-semibold">No.</TableHead>
+              <TableHead className="min-w-[180px] text-sm font-semibold">Name</TableHead>
+              <TableHead className="text-sm font-semibold">Date From</TableHead>
+              <TableHead className="text-sm font-semibold">Date To</TableHead>
+              <TableHead className="min-w-[220px] text-sm font-semibold">Purpose</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Local Conv.</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Trip Conv.</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Others</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Advance</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Total</TableHead>
+              <TableHead className="text-right text-sm font-semibold">Net Payable</TableHead>
+              <TableHead className="min-w-[180px] text-sm font-semibold">Remarks</TableHead>
+              <TableHead className="min-w-[160px] text-sm font-semibold">Attachment</TableHead>
               <TableHead />
             </TableRow>
           </TableHeader>
@@ -1900,7 +2004,7 @@ function EditorBill2({
                   })()}
                 </TableCell>
                 {/* Net */}
-                <TableCell className="p-1 text-right">
+                <TableCell className="p-3 text-right text-sm">
                   {(() => {
                     const r = (rows||[])[i];
                     const s = (Number(r?.local)||0)+(Number(r?.trip)||0)+(Number(r?.others)||0);
@@ -1908,23 +2012,23 @@ function EditorBill2({
                     return n.toFixed(2);
                   })()}
                 </TableCell>
-                <TableCell className="p-1 min-w-[180px]">
+                <TableCell className="p-3 min-w-[180px]">
                   <FormField control={control} name={`items.${i}.remarks`} render={({ field })=>(
-                    <FormItem><FormControl><Input placeholder="Remarks" {...field} className="w-[220px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input placeholder="Remarks" {...field} className="w-[220px] text-sm" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
 
                 {/* Attachment (file) */}
-                <TableCell className="p-1 min-w-[160px]">
+                <TableCell className="p-3 min-w-[160px]">
                   <input type="file" accept="image/*,application/pdf" onChange={(e) => onPickFile(i, e.currentTarget.files?.[0] ?? null)} />
                   {files?.[i] ? (
-                    <div className="text-xs text-muted-foreground mt-1 truncate max-w-[180px]">
+                    <div className="text-sm text-muted-foreground mt-1 truncate max-w-[180px]">
                       {files[i]?.name}
                     </div>
                   ) : null}
                 </TableCell>
 
-                <TableCell className="p-1 pt-3 text-right">
+                <TableCell className="p-3 py-3 text-right">
                   {fields.length>1 && (
                     <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={()=>remove(i)}>
                       <Trash2 className="h-4 w-4" />
@@ -1934,8 +2038,8 @@ function EditorBill2({
               </TableRow>
             ))}
             <TableRow className="font-semibold bg-muted/30">
-              <TableCell colSpan={13} className="text-right">Total Tk</TableCell>
-              <TableCell className="text-right">{sum.toFixed(2)}</TableCell>
+              <TableCell colSpan={13} className="text-right p-3 text-sm">Total Tk</TableCell>
+              <TableCell className="text-right p-3 text-sm font-bold">{sum.toFixed(2)}</TableCell>
             </TableRow>
           </TableBody>
         </Table>
@@ -2079,8 +2183,8 @@ function EditorBill3({
             ))}
 
             <TableRow className="font-semibold bg-muted/30">
-              <TableCell colSpan={13} className="text-right">Total Tk</TableCell>
-              <TableCell className="text-right">{sum.toFixed(2)}</TableCell>
+              <TableCell colSpan={13} className="text-right p-3 text-sm">Total Tk</TableCell>
+              <TableCell className="text-right p-3 text-sm font-bold">{sum.toFixed(2)}</TableCell>
             </TableRow>
           </TableBody>
         </Table>

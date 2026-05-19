@@ -2,7 +2,7 @@ import { getSession } from "@/lib/actions";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { BillForm } from "@/components/bills/bill-form";
-import { listDirectReports } from "@/lib/repo";
+import { listSupervisors } from "@/lib/repo";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,7 +14,7 @@ export default async function NewBillPage() {
   }
 
   const user = session.user;
-  const employees = user.role === "supervisor" ? await listDirectReports(user.id) : [];
+  const supervisors = user.role === "supervisor" ? await listSupervisors() : [];
 
   return (
     <div className="container mx-auto w-full">
@@ -24,7 +24,7 @@ export default async function NewBillPage() {
           <CardDescription>Fill out the details for your bill. You can add multiple items.</CardDescription>
         </CardHeader>
         <CardContent>
-          <BillForm user={user} employees={employees} />
+          <BillForm user={user} supervisors={supervisors} />
         </CardContent>
       </Card>
     </div>

@@ -16,7 +16,7 @@ export default async function TeamPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">All Employees</h1>
-      <TeamView initialUsers={allUsers} allUsers={allUsers} />
+      <TeamView initialUsers={allUsers} allUsers={allUsers} currentUserRole={session.user.role} />
     </div>
   );
 }

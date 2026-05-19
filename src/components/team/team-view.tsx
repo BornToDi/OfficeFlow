@@ -16,9 +16,10 @@ import { TeamMembersTable } from "./team-members-table";
 interface TeamViewProps {
   initialUsers: User[];
   allUsers: User[];
+  currentUserRole: User["role"];
 }
 
-export function TeamView({ initialUsers, allUsers }: TeamViewProps) {
+export function TeamView({ initialUsers, allUsers, currentUserRole }: TeamViewProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<Role | "all">("all");
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
@@ -90,7 +91,7 @@ export function TeamView({ initialUsers, allUsers }: TeamViewProps) {
           </Select>
         </div>
       </div>
-      <TeamMembersTable users={filteredUsers} allUsers={allUsers} />
+      <TeamMembersTable users={filteredUsers} allUsers={allUsers} currentUserRole={currentUserRole} />
     </div>
   );
 }

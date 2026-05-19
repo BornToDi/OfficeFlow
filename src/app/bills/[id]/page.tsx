@@ -78,6 +78,7 @@ export default async function BillDetail({
   const role = String(session.user.role);
   const S = (dbBill.status || "").toUpperCase();
   const isDraft = S === "DRAFT";
+  const isSubmitted = S === "SUBMITTED";
   const isRejected =
     S === "REJECTED_BY_SUPERVISOR" ||
     S === "REJECTED_BY_ACCOUNTS" ||
@@ -85,9 +86,13 @@ export default async function BillDetail({
   const isOwner = session.user.id === dbBill.employeeId;
   const isDirectSupervisor =
     !!dbBill.employee?.supervisorId && dbBill.employee.supervisorId === session.user.id;
+  const approverIdNeeded: string | null =
+    (dbBill as any).supervisorId ?? dbBill.employee?.supervisorId ?? null;
 
-  // allow edit for DRAFT OR REJECTED when owner or direct supervisor
-  const canEdit = (isDraft || isRejected) && (isOwner || isDirectSupervisor);
+  // allow edit for DRAFT/REJECTED, and allow the responsible supervisor to edit a submitted bill before approval
+  const canEdit =
+    ((isDraft || isRejected) && (isOwner || isDirectSupervisor)) ||
+    (isSubmitted && role === "supervisor" && session.user.id === approverIdNeeded);
   const showEdit = wantsEdit && canEdit;
 
   const simpleUser = showEdit
@@ -101,17 +106,16 @@ export default async function BillDetail({
       }
     : undefined;
 
-  // current target supervisor for SUBMITTED bills
+  // current target supervisor for submitted bills
   const currentSupervisorId = dbBill.supervisorId ?? dbBill.employee?.supervisorId ?? null;
-  const approverIdNeeded: string | null =
-  (dbBill as any).supervisorId ?? dbBill.employee?.supervisorId ?? null;
 
   // const canThisSupervisorApprove =
   //   role === "supervisor" && dbBill.status === "SUBMITTED" && currentSupervisorId === session.user.id;
   const canThisSupervisorApprove =
   role === "supervisor" &&
-  dbBill.status === "SUBMITTED" &&
+  (dbBill.status === "SUBMITTED" || (dbBill.status === "DRAFT" && dbBill.history.some((h) => h.status === "SUBMITTED"))) &&
   session.user.id === approverIdNeeded;
+
 
   // supervisors for forwarding dropdown
   const supervisors = await listSupervisors();

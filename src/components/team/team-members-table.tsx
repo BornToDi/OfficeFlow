@@ -1,3 +1,5 @@
+"use client";
+
 import type { User } from "@/lib/types";
 import {
   Table,
@@ -14,10 +16,37 @@ import { Badge } from "../ui/badge";
 interface TeamMembersTableProps {
   users: User[];
   allUsers: User[];
+  currentUserRole?: User["role"];
 }
 
-export function TeamMembersTable({ users, allUsers }: TeamMembersTableProps) {
+export function TeamMembersTable({ users, allUsers, currentUserRole }: TeamMembersTableProps) {
   const userMap = new Map(allUsers.map((user) => [user.id, user.name]));
+
+  async function handleDelete(userId: string) {
+    if (!confirm("Delete this user? This action cannot be undone.")) return;
+    try {
+      const res = await fetch("/api/users/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId }) });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Delete failed");
+      location.reload();
+    } catch (e: any) {
+      alert(e?.message || "Failed to delete user");
+    }
+  }
+
+  async function handleResetPassword(userId: string) {
+    const pwd = prompt("Enter a temporary password for the user (min 4 chars):");
+    if (!pwd) return;
+    if (pwd.length < 4) return alert("Password must be at least 4 characters");
+    try {
+      const res = await fetch("/api/users/reset-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId, newPassword: pwd }) });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Reset failed");
+      alert("Password reset successfully. Tell the user to change it after login.");
+    } catch (e: any) {
+      alert(e?.message || "Failed to reset password");
+    }
+  }
 
   return (
     <Card>
@@ -29,6 +58,7 @@ export function TeamMembersTable({ users, allUsers }: TeamMembersTableProps) {
             <TableHead>Role</TableHead>
             <TableHead>Designation</TableHead>
             <TableHead>Supervisor</TableHead>
+            {(currentUserRole === "management" || currentUserRole === "followup") && <TableHead>Actions</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -55,6 +85,14 @@ export function TeamMembersTable({ users, allUsers }: TeamMembersTableProps) {
                   </TableCell>
                   <TableCell>{user.designation || 'N/A'}</TableCell>
                   <TableCell>{user.supervisorId ? userMap.get(user.supervisorId) : 'N/A'}</TableCell>
+                  {(currentUserRole === "management" || currentUserRole === "followup") && (
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <button className="btn btn-sm rounded px-2 py-1 bg-red-600 text-white" onClick={() => handleDelete(user.id)}>Delete</button>
+                        <button className="btn btn-sm rounded px-2 py-1 bg-yellow-500 text-black" onClick={() => handleResetPassword(user.id)}>Reset Password</button>
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               )
             })

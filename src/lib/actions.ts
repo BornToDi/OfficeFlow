@@ -758,7 +758,13 @@ export async function saveDraft(
     let billId = parsed.existingBillId;
 
     if (parsed.existingBillId) {
-   // inside saveDraft (when parsed.existingBillId is true)
+      const existingBill = await getBillById(parsed.existingBillId);
+      const canPreserveSubmittedStatus =
+        session.user.role === "supervisor" &&
+        existingBill?.status === "SUBMITTED" &&
+        ((existingBill.supervisorId ?? existingBill.employee?.supervisorId ?? null) === session.user.id);
+
+      // inside saveDraft (when parsed.existingBillId is true)
     await updateBillDraft(parsed.existingBillId, {
       companyName: parsed.companyName,
       companyAddress: parsed.companyAddress,
@@ -767,7 +773,8 @@ export async function saveDraft(
       // send items ONLY if there are rows; otherwise omit to preserve DB rows
       items: parsed.items && parsed.items.length ? parsed.items : undefined,
       actorId: session.user.id,
-      comment: "Draft updated by user",
+      comment: canPreserveSubmittedStatus ? "Edited by supervisor before approval" : "Draft updated by user",
+      preserveStatus: canPreserveSubmittedStatus,
     });
 
     } else {

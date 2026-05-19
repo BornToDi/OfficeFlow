@@ -739,6 +739,30 @@ export async function listAllBills() {
   }
 }
 
+export async function deleteUser(userId: string) {
+  // Delete bills belonging to user (clean up related data)
+  const bills = await prisma.bill.findMany({ where: { employeeId: userId }, select: { id: true } });
+  for (const b of bills) {
+    // delete related items and history then bill
+    await prisma.billItem.deleteMany({ where: { billId: b.id } });
+    await prisma.billHistory.deleteMany({ where: { billId: b.id } });
+    await prisma.bill.delete({ where: { id: b.id } });
+  }
+
+  // Remove supervisor change requests involving this user
+  try {
+    await prisma.$executeRawUnsafe(
+      "DELETE FROM `SupervisorChangeRequest` WHERE employeeId = ? OR currentSupervisorId = ? OR newSupervisorId = ?",
+      userId,
+      userId,
+      userId
+    );
+  } catch {}
+
+  // Finally delete the user record
+  await prisma.user.delete({ where: { id: userId } });
+}
+
 /* ========== DRAFTS ========== */
 
 export async function saveBillDraft(input: {
@@ -814,23 +838,20 @@ export async function updateBillDraft(
     }[];                       // ← OPTIONAL
     comment?: string;
     actorId?: string | null;
+    preserveStatus?: boolean;
   }
 ) {
+  const existing = await prisma.bill.findUnique({
+    where: { id: billId },
+    select: { status: true },
+  });
 
-const existing = await prisma.bill.findUnique({
-  where: { id: billId },
-  select: { status: true },
-});
-if (!existing) throw new Error("Bill not found");
-if (!isEditableStatus(existing.status)) {
-  throw new Error("Only DRAFT or rejected/returned bills can be edited");
-}
-
-  // if (!existing) throw new Error("Draft not found");
-  // if (existing.status !== "DRAFT") throw new Error("Only DRAFT bills can be edited");
+  if (!existing) throw new Error("Bill not found");
+  if (!isEditableStatus(existing.status) && !(input.preserveStatus && existing.status === "SUBMITTED")) {
+    throw new Error("Only DRAFT or rejected/returned bills can be edited");
+  }
 
   return prisma.$transaction(async (tx) => {
-    // update header fields
     await tx.bill.update({
       where: { id: billId },
       data: {
@@ -841,7 +862,6 @@ if (!isEditableStatus(existing.status)) {
       },
     });
 
-    // only touch items when caller actually sent items
     if (typeof input.items !== "undefined") {
       await tx.billItem.deleteMany({ where: { billId } });
       if (input.items.length) {
@@ -867,9 +887,9 @@ if (!isEditableStatus(existing.status)) {
     await tx.billHistory.create({
       data: {
         billId,
-        status: "DRAFT",
+        status: input.preserveStatus ? "SUBMITTED" : "DRAFT",
         actorId: input.actorId ?? null,
-        comment: input.comment ?? "Draft updated",
+        comment: input.comment ?? (input.preserveStatus ? "Edited before approval" : "Draft updated"),
       },
     });
 
