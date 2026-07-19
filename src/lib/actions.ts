@@ -826,6 +826,11 @@ export async function submitBill(
     }
 
 if (parsed.existingBillId) {
+  const existingBill = await getBillById(parsed.existingBillId);
+  const canPreserveSubmittedStatus =
+    session.user.role === "supervisor" &&
+    existingBill?.status === "SUBMITTED" &&
+    ((existingBill.supervisorId ?? existingBill.employee?.supervisorId ?? null) === session.user.id);
 
   // Duplicate check removed per user request
 
@@ -837,10 +842,15 @@ if (parsed.existingBillId) {
     amount: parsed.totalAmount,
     items: parsed.items, // server keeps attachments already stored
     actorId: session.user.id,
-    comment: "Finalized draft before submit",
+    comment: canPreserveSubmittedStatus
+      ? "Edited by supervisor before approval"
+      : "Finalized draft before submit",
+    preserveStatus: canPreserveSubmittedStatus,
   });
 
-  await submitDraft(parsed.existingBillId, session.user.id);
+  if (!canPreserveSubmittedStatus) {
+    await submitDraft(parsed.existingBillId, session.user.id);
+  }
 
   // If a supervisor submits, either forward to selected supervisor or auto-approve when allowed
   if (session.user.role === "supervisor") {

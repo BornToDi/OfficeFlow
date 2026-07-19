@@ -32,9 +32,11 @@ export function SupervisorDashboard({ user, bills, users }: SupervisorDashboardP
 
   // All bills associated with the supervisor's team, including their own, for summary stats.
   const teamAndOwnBills = bills.filter((bill) =>
-    teamMemberIds.includes(String(bill.employeeId)) ||
-    String(bill.employeeId) === String(user.id) ||
-    String(bill.supervisorId) === String(user.id)
+    bill.status !== "SUBMITTED" && (
+      teamMemberIds.includes(String(bill.employeeId)) ||
+      String(bill.employeeId) === String(user.id) ||
+      String(bill.supervisorId) === String(user.id)
+    )
   );
   const filteredTeamBills = useMemo(() => {
     if (billScope === "mine") {

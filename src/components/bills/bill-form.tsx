@@ -74,7 +74,8 @@ type RowB2 = {
   remarks?: string;
 };
 type RowB3 = {
-  name: string;
+  from: string;
+  to: string;
   dateFrom: Date;
   dateTo: Date;
   purpose: string;
@@ -145,7 +146,7 @@ const detectFormat = (items?: BillViewItem[]): BillFormat => {
   const t = items[0]?.transport ?? "";
   if (t === "__BILL2__") return "BILL2";
   if (t === "__BILL3__") return "BILL3";
-  if (t === "__BILL4__") return "BILL4";
+  // if (t === "__BILL4__") return "BILL4";
   if (t === "__BILL5__") return "BILL5";
   return "BILL1";
 };
@@ -177,7 +178,7 @@ const encB3 = (r: RowB3) => {
   const total = (Number(r.food)||0)+(Number(r.hotel)||0)+(Number(r.others)||0);
   const net = total - (Number(r.advance)||0);
   return JSON.stringify({
-    name: r.name||"", purpose: r.purpose||"",
+    from: r.from||"", to: r.to||"", purpose: r.purpose||"",
     food: Number(r.food||0), hotel: Number(r.hotel||0), others: Number(r.others||0),
     advance: Number(r.advance||0), total, net, remarks: r.remarks||""
   });
@@ -188,9 +189,9 @@ const decB3 = (s: string) => {
     const food = Number(o.food||0), hotel = Number(o.hotel)||0, others = Number(o.others)||0, advance = Number(o.advance)||0;
     const total = Number.isFinite(o.total) ? Number(o.total) : food+hotel+others;
     const net = Number.isFinite(o.net) ? Number(o.net) : total-advance;
-    return { name:String(o.name||""), purpose:String(o.purpose||""), food, hotel, others, advance, total, net, remarks:String(o.remarks||"") };
+    return { from:String(o.from ?? o.name ?? ""), to:String(o.to ?? ""), purpose:String(o.purpose||""), food, hotel, others, advance, total, net, remarks:String(o.remarks||"") };
   } catch {
-    return { name:"", purpose:s, food:0, hotel:0, others:0, advance:0, total:0, net:0, remarks:"" };
+    return { from:"", to:"", purpose:s, food:0, hotel:0, others:0, advance:0, total:0, net:0, remarks:"" };
   }
 };
 
@@ -353,7 +354,7 @@ function Bill5ChildTable({
               <TableRow key={cf.id}>
                 <TableCell>
                   <FormField control={control} name={`items.${parentIndex}.children.${ci}.purpose`} render={({ field }) => (
-                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="Purpose" required className="w-[220px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="Purpose" className="w-[220px]" /></FormControl><FormMessage/></FormItem>
                   )} />
                 </TableCell>
                 <TableCell>
@@ -602,6 +603,7 @@ function EditorBill5({
 /* NEW: View for Bill-5 */
 function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fallbackDesignation?: string; viewerRole?: string }) {
   const [mounted, setMounted] = useState(false);
+  const isEmployeeView = viewerRole === "employee";
   const showNameColumn = viewerRole === "management" || viewerRole === "accounts" || viewerRole === "supervisor";
 
   useEffect(() => {
@@ -610,6 +612,26 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
 
   if (!mounted) {
     return <div className="rounded-xl border bg-white p-6 shadow-sm" />;
+  }
+
+  if (isEmployeeView) {
+    return (
+      <div className="rounded-xl border bg-white p-6 shadow-sm">
+        <div className="rounded-lg border bg-muted/20 p-8 text-center">
+          <p className="text-sm text-muted-foreground">Submitted Bill Amount</p>
+          <p className="mt-2 text-4xl font-semibold tabular-nums">
+            {new Intl.NumberFormat("en-IN", { style: "currency", currency: "BDT" }).format(Number(b.amount || 0))}
+          </p>
+          <p className="mt-4 text-sm text-muted-foreground">
+            {b.amountInWords || numberToWords(Number(b.amount || 0)) + " Only"}
+          </p>
+        </div>
+        <Separator className="my-4" />
+        <p className="text-sm text-muted-foreground">
+          Bill details are hidden for employee view after submission.
+        </p>
+      </div>
+    );
   }
 
   const groups: Array<{
@@ -817,8 +839,11 @@ export function BillForm(props: Props) {
   const defaults: Partial<BillFormValues> = useMemo(() => {
     if (!props.bill) {
       return {
-        companyName: "Networld Bangladesh PLC",
-        companyAddress: "57 & 57/A, Uday Tower, (4th Floor) Gulshan 1, Gulshan Avenue, 1212 Dhaka",
+        companyName: formatType === "BILL5" ? "Networld Technology Limited" : "Networld Bangladesh PLC",
+        companyAddress:
+          formatType === "BILL5"
+            ? "Zeenat Bhaban, 41/1, Kazi Islam Avenue, Dhaka 1215"
+            : "57 & 57/A, Uday Tower, (4th Floor) Gulshan 1, Gulshan Avenue, 1212 Dhaka",
         employeeName: "user" in props ? (props.user as any).name : "",
         employeeDesignation: "user" in props ? (props.user as any).designation ?? "" : "",
         supervisorId: "",
@@ -865,7 +890,7 @@ export function BillForm(props: Props) {
         supervisorId: (b as any).supervisorId ?? "",
         items: b.items.map<RowB3>((it) => {
           const p = decB3(it.purpose);
-          return { name:p.name, dateFrom:safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date), purpose:p.purpose, food:p.food, hotel:p.hotel, others:p.others, advance:p.advance, remarks:p.remarks };
+          return { from:p.from, to:p.to, dateFrom:safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date), purpose:p.purpose, food:p.food, hotel:p.hotel, others:p.others, advance:p.advance, remarks:p.remarks };
         }),
       };
     }
@@ -1016,12 +1041,11 @@ export function BillForm(props: Props) {
     const cur = form.getValues();
     if (formatType === "BILL1") {
       reset({ ...cur, items: [{ date:new Date(), from:"", to:"", transport:"", purpose:"", amount: undefined as any }] });
-      setRowFiles([]);
     } else if (formatType === "BILL2") {
-      reset({ ...cur, items: [{ name:"", dateFrom:new Date(), dateTo:new Date(), purpose:"", local:undefined as any, trip:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }] });
+      reset({ ...cur, items: [{ from:"", to:"", dateFrom:new Date(), dateTo:new Date(), purpose:"", local:undefined as any, trip:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }] });
       setRowFiles(makeSingleAttachmentRow());
     } else if (formatType === "BILL3") {
-      reset({ ...cur, items: [{ name:"", dateFrom:new Date(), dateTo:new Date(), purpose:"", food:undefined as any, hotel:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }] });
+      reset({ ...cur, items: [{ from:"", to:"", dateFrom:new Date(), dateTo:new Date(), purpose:"", food:undefined as any, hotel:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }] });
       setRowFiles(makeSingleAttachmentRow());
     } else if (formatType === "BILL4") {
       reset({ ...cur, items: [{ date:new Date(), time:"", incident:"", purpose:"",  vehicle: "",  food:undefined as any, hotel:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }] });
@@ -1060,7 +1084,6 @@ export function BillForm(props: Props) {
         if (isEmpty(r.from))             { setError(`items.${i}.from` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.from: required`); }
         if (isEmpty(r.to))               { setError(`items.${i}.to` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.to: required`); }
         if (isEmpty(r.transport))        { setError(`items.${i}.transport` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.transport: required`); }
-        if (isEmpty(r.purpose))          { setError(`items.${i}.purpose` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.purpose: required`); }
         if (!(asNum(r.amount) > 0))      { setError(`items.${i}.amount` as any, { type: "manual", message: "Must be > 0" }); ok = false; reasons.push(`items.${i}.amount: must be > 0`); }
       } else if (formatType === "BILL2") {
         const local = asNum(r.local), trip = asNum(r.trip), others = asNum(r.others), advance = asNum(r.advance);
@@ -1068,15 +1091,14 @@ export function BillForm(props: Props) {
         if (isEmpty(r.name))             { setError(`items.${i}.name` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.name: required`); }
         if (!r.dateFrom)                 { setError(`items.${i}.dateFrom` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.dateFrom: required`); }
         if (!r.dateTo)                   { setError(`items.${i}.dateTo` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.dateTo: required`); }
-        if (isEmpty(r.purpose))          { setError(`items.${i}.purpose` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.purpose: required`); }
         if (!(total > 0))                { setError(`items.${i}.local` as any,  { type: "manual", message: "Enter at least one amount" }); ok = false; reasons.push(`items.${i}: enter at least one amount`); }
       } else if (formatType === "BILL3") {
         const food = asNum(r.food), hotel = asNum(r.hotel), others = asNum(r.others), advance = asNum(r.advance);
         const total = (Number(food)||0) + (Number(hotel)||0) + (Number(others)||0);
-        if (isEmpty(r.name))             { setError(`items.${i}.name` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.name: required`); }
+        if (isEmpty(r.from))             { setError(`items.${i}.from` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.from: required`); }
+        if (isEmpty(r.to))               { setError(`items.${i}.to` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.to: required`); }
         if (!r.dateFrom)                 { setError(`items.${i}.dateFrom` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.dateFrom: required`); }
         if (!r.dateTo)                   { setError(`items.${i}.dateTo` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.dateTo: required`); }
-        if (isEmpty(r.purpose))          { setError(`items.${i}.purpose` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.purpose: required`); }
         if (!(total > 0))                { setError(`items.${i}.food` as any,   { type: "manual", message: "Enter at least one amount" }); ok = false; reasons.push(`items.${i}: enter at least one amount`); }
       } else if (formatType === "BILL5") {
         // parent-level checks
@@ -1090,7 +1112,6 @@ export function BillForm(props: Props) {
         children.forEach((c: RowB5Child, ci: number) => {
           const local = asNum(c.local), trip = asNum(c.trip), food = asNum(c.food), hotel = asNum(c.hotel), others = asNum(c.others), advance = asNum(c.advance);
           const total = (Number(local)||0) + (Number(trip)||0) + (Number(food)||0) + (Number(hotel)||0) + (Number(others)||0);
-            if (isEmpty(c.purpose)) { setError(`items.${i}.children.${ci}.purpose` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.children.${ci}.purpose: required`); }
         });
       } else if (formatType === "BILL4") {
         const food = asNum(r.food), hotel = asNum(r.hotel), others = asNum(r.others), advance = asNum(r.advance);
@@ -1098,7 +1119,6 @@ export function BillForm(props: Props) {
         if (!r.date)                     { setError(`items.${i}.date` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.date: required`); }
         if (isEmpty(r.time))             { setError(`items.${i}.time` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.time: required`); }
         if (isEmpty(r.incident))         { setError(`items.${i}.incident` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.incident: required`); }
-        if (isEmpty(r.purpose))          { setError(`items.${i}.purpose` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.purpose: required`); }
         if (isEmpty(r.meal))             { setError(`items.${i}.meal` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.meal: required`); }
         if (!(total > 0))                { setError(`items.${i}.food` as any, { type: "manual", message: "Enter at least one amount" }); ok = false; reasons.push(`items.${i}: enter at least one amount`); }
       }
@@ -1328,7 +1348,8 @@ export function BillForm(props: Props) {
     if (fmt === "BILL2") return <ViewBill2 b={b} fallbackDesignation={fallbackDesignation} />;
     if (fmt === "BILL3") return <ViewBill3 b={b} fallbackDesignation={fallbackDesignation} />;
     if (fmt === "BILL5") return <ViewBill5 b={b} fallbackDesignation={fallbackDesignation} viewerRole={(viewer as any)?.role} />;
-    return <ViewBill4 b={b} fallbackDesignation={fallbackDesignation} />;
+    // return <ViewBill4 b={b} fallbackDesignation={fallbackDesignation} />;
+    return null;
   }
 
   /* ---------- edit/create ---------- */
@@ -1340,7 +1361,7 @@ export function BillForm(props: Props) {
         className="w-full max-w-none mx-auto space-y-6 rounded-xl border bg-white p-6 md:p-8 shadow-sm"
       >
         {/* Hidden bill id if editing */}
-        <FormField control={control} name="billId" render={({ field }) => <input type="hidden" {...field} />} />
+        <FormField control={control} name="billId" render={({ field }) => <input type="hidden" name={field.name} value={field.value ?? ""} onChange={field.onChange} onBlur={field.onBlur} ref={field.ref} />} />
 
         {/* Hidden: actions.ts expects employeeIdOrCode; filled automatically from current user or bill */}
         <input type="hidden" name="employeeIdOrCode" value={effectiveEmployeeCode} />
@@ -1396,7 +1417,7 @@ export function BillForm(props: Props) {
             <option value="BILL1">Bill-1 (standard)</option>
             <option value="BILL2">Bill-2 (Local/Trip/Others/Advance)</option>
             <option value="BILL3">Bill-3 (Food/Hotel/Others/Advance)</option>
-            <option value="BILL4">Bill-4 (Date/Time/Incident + Food/Hotel/Others/Advance)</option>
+            {/* <option value="BILL4">Bill-4 (Date/Time/Incident + Food/Hotel/Others/Advance)</option> */}
             <option value="BILL5">Bill-5 (Combined: local/trip + food/hotel + incident/time)</option>
           </select>
         </div>
@@ -1435,7 +1456,7 @@ export function BillForm(props: Props) {
             employeeName={"user" in props ? (props.user as any).name : ""}
           />
         )}
-        {formatType === "BILL4" && (
+        {/* {formatType === "BILL4" && (
           <EditorBill4
             control={control}
             fields={fields}
@@ -1444,7 +1465,7 @@ export function BillForm(props: Props) {
             onPickFile={(i,f)=> setRowFileAt(i,f)}
             files={rowFiles.map((r)=> r?.[0] ?? null)}
           />
-        )}
+        )} */}
 
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -1594,7 +1615,8 @@ function ViewBill2({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
           <TableHeader>
             <TableRow>
               <TableHead className="text-sm font-semibold">No.</TableHead>
-              <TableHead className="min-w-[180px] text-sm font-semibold">Name</TableHead>
+              <TableHead className="min-w-[140px] text-sm font-semibold">From</TableHead>
+              <TableHead className="min-w-[140px] text-sm font-semibold">To</TableHead>
               <TableHead className="text-sm font-semibold">Date From</TableHead>
               <TableHead className="text-sm font-semibold">Date To</TableHead>
               <TableHead className="min-w-[220px] text-sm font-semibold">Purpose</TableHead>
@@ -1616,7 +1638,8 @@ function ViewBill2({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
               return (
                 <TableRow key={i}>
                   <TableCell className="p-3 py-3 font-medium text-sm">{i+1}</TableCell>
-                  <TableCell className="p-3 min-w-[180px] text-sm">{r.name||"-"}</TableCell>
+                  <TableCell className="p-3 min-w-[140px] text-sm">{r.from||"-"}</TableCell>
+                  <TableCell className="p-3 min-w-[140px] text-sm">{r.to||"-"}</TableCell>
                   <TableCell className="p-3 text-sm">{format(r.dateFrom, "PPP")}</TableCell>
                   <TableCell className="p-3 text-sm">{format(r.dateTo, "PPP")}</TableCell>
                   <TableCell className="p-3 min-w-[220px] text-sm">{r.purpose}</TableCell>
@@ -1657,7 +1680,8 @@ function ViewBill3({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
           <TableHeader>
             <TableRow>
               <TableHead className="text-sm font-semibold">No.</TableHead>
-              <TableHead className="min-w-[180px] text-sm font-semibold">Name</TableHead>
+              <TableHead className="min-w-[140px] text-sm font-semibold">From</TableHead>
+              <TableHead className="min-w-[140px] text-sm font-semibold">To</TableHead>
               <TableHead className="text-sm font-semibold">Date From</TableHead>
               <TableHead className="text-sm font-semibold">Date To</TableHead>
               <TableHead className="min-w-[220px] text-sm font-semibold">Purpose</TableHead>
@@ -1679,7 +1703,8 @@ function ViewBill3({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
               return (
                 <TableRow key={i}>
                   <TableCell className="p-3 py-3 font-medium text-sm">{i+1}</TableCell>
-                  <TableCell className="p-3 min-w-[180px] text-sm">{r.name||"-"}</TableCell>
+                  <TableCell className="p-3 min-w-[140px] text-sm">{r.from||"-"}</TableCell>
+                  <TableCell className="p-3 min-w-[140px] text-sm">{r.to||"-"}</TableCell>
                   <TableCell className="p-3 text-sm">{format(r.dateFrom, "PPP")}</TableCell>
                   <TableCell className="p-3 text-sm">{format(r.dateTo, "PPP")}</TableCell>
                   <TableCell className="p-3 min-w-[220px] text-sm">{r.purpose}</TableCell>
@@ -1947,9 +1972,14 @@ function EditorBill2({
             {fields.map((f,i)=>(
               <TableRow key={f?.id ?? i}>
                 <TableCell className="p-1 pt-3 font-medium">{i+1}</TableCell>
-                <TableCell className="p-1 min-w-[180px]">
-                  <FormField control={control} name={`items.${i}.name`} render={({ field })=>(
-                    <FormItem><FormControl><Input placeholder="Name" {...field} required className="w-[220px]" /></FormControl><FormMessage/></FormItem>
+                <TableCell className="p-1 min-w-[140px]">
+                  <FormField control={control} name={`items.${i}.from`} render={({ field })=>(
+                    <FormItem><FormControl><Input placeholder="From" {...field} required className="w-[180px]" /></FormControl><FormMessage/></FormItem>
+                  )}/>
+                </TableCell>
+                <TableCell className="p-1 min-w-[140px]">
+                  <FormField control={control} name={`items.${i}.to`} render={({ field })=>(
+                    <FormItem><FormControl><Input placeholder="To" {...field} required className="w-[180px]" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
                 {(["dateFrom","dateTo"] as const).map((k)=>(
@@ -1976,7 +2006,7 @@ function EditorBill2({
                 ))}
                 <TableCell className="p-1 min-w-[220px]">
                   <FormField control={control} name={`items.${i}.purpose`} render={({ field })=>(
-                    <FormItem><FormControl><Input placeholder="Purpose" {...field} required className="w-[280px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input placeholder="Purpose" {...field} className="w-[280px]" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
                 {(["local","trip","others","advance"] as const).map((k)=>(
@@ -2038,7 +2068,7 @@ function EditorBill2({
               </TableRow>
             ))}
             <TableRow className="font-semibold bg-muted/30">
-              <TableCell colSpan={13} className="text-right p-3 text-sm">Total Tk</TableCell>
+              <TableCell colSpan={14} className="text-right p-3 text-sm">Total Tk</TableCell>
               <TableCell className="text-right p-3 text-sm font-bold">{sum.toFixed(2)}</TableCell>
             </TableRow>
           </TableBody>
@@ -2048,7 +2078,7 @@ function EditorBill2({
       <Button
         type="button"
         variant="outline"
-        onClick={()=> append({ name:"", dateFrom:new Date(), dateTo:new Date(), purpose:"", local:undefined as any, trip:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" })}
+        onClick={()=> append({ from:"", to:"", dateFrom:new Date(), dateTo:new Date(), purpose:"", local:undefined as any, trip:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" })}
       >
         <PlusCircle className="mr-2 h-4 w-4" /> Add Row
       </Button>
@@ -2072,7 +2102,8 @@ function EditorBill3({
           <TableHeader>
             <TableRow>
               <TableHead>No.</TableHead>
-              <TableHead className="min-w-[180px]">Name</TableHead>
+              <TableHead className="min-w-[140px]">From</TableHead>
+              <TableHead className="min-w-[140px]">To</TableHead>
               <TableHead>Date From</TableHead>
               <TableHead>Date To</TableHead>
               <TableHead className="min-w-[220px]">Purpose</TableHead>
@@ -2091,9 +2122,14 @@ function EditorBill3({
             {fields.map((f,i)=>(
               <TableRow key={f?.id ?? i}>
                 <TableCell className="p-1 pt-3 font-medium">{i+1}</TableCell>
-                <TableCell className="p-1 min-w-[180px]">
-                  <FormField control={control} name={`items.${i}.name`} render={({ field })=>(
-                    <FormItem><FormControl><Input placeholder="Name" {...field} required className="w-[220px]" /></FormControl><FormMessage/></FormItem>
+                <TableCell className="p-1 min-w-[140px]">
+                  <FormField control={control} name={`items.${i}.from`} render={({ field })=>(
+                    <FormItem><FormControl><Input placeholder="From" {...field} required className="w-[180px]" /></FormControl><FormMessage/></FormItem>
+                  )}/>
+                </TableCell>
+                <TableCell className="p-1 min-w-[140px]">
+                  <FormField control={control} name={`items.${i}.to`} render={({ field })=>(
+                    <FormItem><FormControl><Input placeholder="To" {...field} required className="w-[180px]" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
                 {(["dateFrom","dateTo"] as const).map((k)=>(
@@ -2120,7 +2156,7 @@ function EditorBill3({
                 ))}
                 <TableCell className="p-1 min-w-[220px]">
                   <FormField control={control} name={`items.${i}.purpose`} render={({ field })=>(
-                    <FormItem><FormControl><Input placeholder="Purpose" {...field} required className="w-[280px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input placeholder="Purpose" {...field} className="w-[280px]" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
 
@@ -2193,7 +2229,7 @@ function EditorBill3({
       <Button
         type="button"
         variant="outline"
-        onClick={()=> append({ name:"", dateFrom:new Date(), dateTo:new Date(), purpose:"", food:undefined as any, hotel:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" })}
+        onClick={()=> append({ from:"", to:"", dateFrom:new Date(), dateTo:new Date(), purpose:"", food:undefined as any, hotel:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" })}
       >
         <PlusCircle className="mr-2 h-4 w-4" /> Add Row
       </Button>
@@ -2321,17 +2357,7 @@ function EditorBill4({
                 {/* Purpose */}
                 <TableCell className="p-1 min-w-[240px]">
                   <FormField control={control} name={`items.${i}.purpose`} render={({ field })=>(
-                    <FormItem>
-                      <FormControl>
-                        <Input
-                          placeholder="Purpose (e.g. ABBL Branch A/C call)"
-                          {...field}
-                          required
-                          className="w-[300px]"
-                        />
-                      </FormControl>
-                      <FormMessage/>
-                    </FormItem>
+                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="Purpose" className="w-[220px]" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
 

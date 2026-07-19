@@ -14,7 +14,15 @@ export default async function NewBillPage() {
   }
 
   const user = session.user;
-  const supervisors = user.role === "supervisor" ? await listSupervisors() : [];
+  let supervisors: Awaited<ReturnType<typeof listSupervisors>> = [];
+  if (user.role === "supervisor") {
+    try {
+      supervisors = await listSupervisors();
+    } catch (error) {
+      console.error("Failed to load supervisors for new bill page:", error);
+      supervisors = [];
+    }
+  }
 
   return (
     <div className="container mx-auto w-full">

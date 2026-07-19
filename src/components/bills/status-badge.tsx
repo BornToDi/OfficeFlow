@@ -7,7 +7,7 @@ const statusMap: Record<
   { text: string; className: string }
 > = {
   DRAFT: { text: "Draft", className: "bg-gray-500" },
-  SUBMITTED: { text: "Submitted", className: "bg-blue-500" },
+  SUBMITTED: { text: "Submitted by employee", className: "bg-blue-500" },
   APPROVED_BY_SUPERVISOR: { text: "Approved by Supervisor", className: "bg-cyan-500" },
   APPROVED_BY_ACCOUNTS: { text: "Approved by Accounts", className: "bg-teal-500" },
   APPROVED_BY_MANAGEMENT: { text: "Final Approval", className: "bg-green-600" },
