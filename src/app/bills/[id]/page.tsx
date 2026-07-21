@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 import { getSession } from "@/lib/actions";
-import { getBillById, deleteBill, listSupervisors, updateBillStatus } from "@/lib/repo";
+import { getBillById, deleteBill, getPriorBill5IncidentWarnings, listSupervisors, updateBillStatus } from "@/lib/repo";
 import type { BillStatus } from "@/lib/types";
 
 import { BillForm } from "@/components/bills/bill-form";
@@ -76,6 +76,22 @@ export default async function BillDetail({
   };
 
   const role = String(session.user.role);
+  if (role === "supervisor" && dbBill.items.some((item) => item.transport === "__BILL5__")) {
+    const incidents = dbBill.items.flatMap((item) => {
+      if (item.transport !== "__BILL5__") return [];
+      try {
+        const incident = String(JSON.parse(item.purpose || "{}").incident || "").trim();
+        return incident ? [incident] : [];
+      } catch {
+        return [];
+      }
+    });
+    viewData.incidentWarnings = await getPriorBill5IncidentWarnings(
+      dbBill.id,
+      dbBill.employeeId,
+      incidents
+    );
+  }
   const S = (dbBill.status || "").toUpperCase();
   const isDraft = S === "DRAFT";
   const isSubmitted = S === "SUBMITTED";

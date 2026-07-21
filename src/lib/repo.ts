@@ -132,6 +132,10 @@ export async function findUserById(id: string) {
   return prisma.user.findUnique({ where: { id } });
 }
 
+export async function findUserByRole(role: Role) {
+  return prisma.user.findFirst({ where: { role }, select: { id: true, name: true } });
+}
+
 const normalizeEmployeeCode = (v?: string | null) =>
   v ? v.trim().toUpperCase() : null;
 
@@ -145,6 +149,14 @@ export async function createUser(input: {
   employeeCode?: string | null;
   passwordHash?: string | null;
 }) {
+  if (input.role === "accounts" || input.role === "management") {
+    const existingRole = await findUserByRole(input.role);
+    if (existingRole) {
+      const roleName = input.role === "accounts" ? "Accounts" : "Admin/Management";
+      throw new Error(`Only one ${roleName} account can be registered.`);
+    }
+  }
+
   const data: any = {
     name: input.name,
     email: input.email.toLowerCase(),
@@ -576,6 +588,48 @@ export async function getBillById(id: string) {
       },
     },
   });
+}
+
+export async function getPriorBill5IncidentWarnings(
+  currentBillId: string,
+  currentEmployeeId: string,
+  incidents: string[]
+) {
+  const wanted = new Set(incidents.map(norm).filter(Boolean));
+  const warnings: Record<string, string> = {};
+  if (!wanted.size) return warnings;
+
+  const priorBills = await prisma.bill.findMany({
+    where: {
+      id: { not: currentBillId },
+      employeeId: { not: currentEmployeeId },
+      status: { not: "DRAFT" },
+      items: { some: { transport: "__BILL5__" } },
+    },
+    orderBy: { createdAt: "asc" },
+    select: {
+      employee: { select: { name: true } },
+      items: {
+        where: { transport: "__BILL5__" },
+        select: { purpose: true },
+      },
+    },
+  });
+
+  for (const bill of priorBills) {
+    for (const item of bill.items) {
+      try {
+        const incident = norm(String(JSON.parse(item.purpose || "{}").incident || ""));
+        if (wanted.has(incident) && !warnings[incident]) {
+          warnings[incident] = bill.employee.name;
+        }
+      } catch {
+        // Ignore malformed legacy purpose payloads.
+      }
+    }
+  }
+
+  return warnings;
 }
 
 const VALID_BILL_STATUS = [

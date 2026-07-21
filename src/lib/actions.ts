@@ -377,6 +377,7 @@ import crypto from "node:crypto";
 import {
   findUserByEmail,
   findUserById,
+  findUserByRole,
   createUser,
   createBill,
   getBillById,
@@ -515,6 +516,14 @@ export async function register(
 
   const existing = await findUserByEmail(email);
   if (existing) return { error: "A user with this email already exists." };
+
+  if (role === "accounts" || role === "management") {
+    const existingRole = await findUserByRole(role);
+    if (existingRole) {
+      const roleName = role === "accounts" ? "Accounts" : "Admin/Management";
+      return { error: `Only one ${roleName} account can be registered.` };
+    }
+  }
 
   let supervisorIdToSet: string | undefined;
   if (role === "employee") {

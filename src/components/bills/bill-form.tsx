@@ -21,6 +21,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/hooks/use-toast";
 
 import type { User, BillStatus } from "@/lib/types";
@@ -49,6 +51,7 @@ export type BillViewData = {
   amountInWords: string;
   status: BillStatus;
   items: BillViewItem[];
+  incidentWarnings?: Record<string, string>;
 };
 
 type BillFormat = "BILL1"|"BILL2"|"BILL3"|"BILL4"|"BILL5";
@@ -123,6 +126,16 @@ type RowB5 = {
   incident?: string;
   children: RowB5Child[];
 };
+
+type Bill5OptionalColumn = "trip" | "food" | "hotel" | "others" | "advance";
+const BILL5_OPTIONAL_COLUMNS: Array<{ key: Bill5OptionalColumn; label: string }> = [
+  { key: "trip", label: "Trip Conveyance" },
+  { key: "food", label: "Food" },
+  { key: "hotel", label: "Hotel" },
+  { key: "others", label: "Others" },
+  { key: "advance", label: "Advance" },
+];
+const BILL5_FIELD_CLASS = "h-9 rounded-md border-slate-300 bg-white shadow-sm transition-colors hover:border-slate-400 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15";
 
 /* ---------- Schema ---------- */
 const billFormSchema = z.object({
@@ -254,7 +267,7 @@ const decB4 = (s: string) => {
 };
 
 /* Bill-5 payload: pack a child row together with its parent metadata */
-const encB5Child = (parent: RowB5, child: RowB5Child) => {
+const encB5Child = (parent: RowB5, child: RowB5Child, selectedColumns: Bill5OptionalColumn[]) => {
   const local = Number(child.local||0);
   const trip = Number(child.trip||0);
   const food = Number(child.food||0);
@@ -271,6 +284,7 @@ const encB5Child = (parent: RowB5, child: RowB5Child) => {
     incident: parent.incident||"",
     purpose: child.purpose||"",
     vehicle: child.vehicle||"",
+    selectedColumns,
     local, trip, food, hotel, others, advance, total, net, remarks: child.remarks||""
   });
 };
@@ -286,11 +300,12 @@ const encB5Child = (parent: RowB5, child: RowB5Child) => {
       incident: String(o.incident||""),
       purpose: String(o.purpose||""),
       vehicle: String(o.vehicle||""),
+      selectedColumns: Array.isArray(o.selectedColumns) ? o.selectedColumns.filter((key: unknown) => BILL5_OPTIONAL_COLUMNS.some((column) => column.key === key)) as Bill5OptionalColumn[] : undefined,
       local: Number(o.local||0), trip: Number(o.trip||0), food: Number(o.food||0), hotel: Number(o.hotel||0), others: Number(o.others||0), advance: Number(o.advance||0), total: Number(o.total||0), net: Number(o.net||0), remarks: String(o.remarks||""),
       attachmentUrl: undefined as (string | null | undefined)
     };
   } catch {
-    return { parentName: "", time: "", dateFrom: "", dateTo: "", incident: "", purpose: s, vehicle: "", local:0, trip:0, food:0, hotel:0, others:0, advance:0, total:0, net:0, remarks: "", attachmentUrl: undefined };
+    return { parentName: "", time: "", dateFrom: "", dateTo: "", incident: "", purpose: s, vehicle: "", selectedColumns: undefined, local:0, trip:0, food:0, hotel:0, others:0, advance:0, total:0, net:0, remarks: "", attachmentUrl: undefined };
   }
 };
 
@@ -317,33 +332,33 @@ function Bill5ChildTable({
   parentIndex,
   files,
   onPickFile,
+  selectedColumns,
 }: {
   control: any;
   parentIndex: number;
   files: (File | null)[][];
   onPickFile: (parentIndex: number, childIndex: number, file: File | null) => void;
+  selectedColumns: Bill5OptionalColumn[];
 }) {
   const parents = useWatch({ control, name: "items" }) as RowB5[];
   const { fields: childFields, append: appendChild, remove: removeChild } = useFieldArray({ control, name: `items.${parentIndex}.children` as any });
 
   return (
     <div className="w-full">
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
         <Table>
-          <TableHeader>
-            <TableRow>
+          <TableHeader className="bg-slate-50/90">
+            <TableRow className="border-slate-200 hover:bg-transparent">
               <TableHead>Purpose</TableHead>
               <TableHead className="min-w-[120px]">From</TableHead>
               <TableHead className="min-w-[120px]">To</TableHead>
               <TableHead className="min-w-[90px]">Time</TableHead>
               <TableHead>Vehicle</TableHead>
               <TableHead className="text-right">Local con</TableHead>
-              <TableHead className="text-right">Trip con</TableHead>
-              <TableHead className="text-right">Food</TableHead>
-              <TableHead className="text-right">Hotel</TableHead>
-              <TableHead className="text-right">Others con</TableHead>
-              <TableHead className="text-right">Advance</TableHead>
-              <TableHead className="text-right">totall amount</TableHead>
+              {BILL5_OPTIONAL_COLUMNS.filter((column) => selectedColumns.includes(column.key)).map((column) => (
+                <TableHead key={column.key} className="text-right">{column.label}</TableHead>
+              ))}
+              <TableHead className="text-right">Total Amount</TableHead>
               <TableHead>Remarks</TableHead>
               <TableHead>Attachment</TableHead>
               <TableHead />
@@ -351,38 +366,60 @@ function Bill5ChildTable({
           </TableHeader>
           <TableBody>
             {childFields.map((cf, ci) => (
-              <TableRow key={cf.id}>
+              <TableRow key={cf.id} className="border-slate-200 hover:bg-slate-50/40">
                 <TableCell>
                   <FormField control={control} name={`items.${parentIndex}.children.${ci}.purpose`} render={({ field }) => (
-                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="Purpose" className="w-[220px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="Purpose" className={cn("w-[220px]", BILL5_FIELD_CLASS)} /></FormControl><FormMessage/></FormItem>
                   )} />
                 </TableCell>
                 <TableCell>
                   <FormField control={control} name={`items.${parentIndex}.children.${ci}.dateFrom`} render={({ field }) => (
-                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="From" className="w-[140px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="From" className={cn("w-[140px]", BILL5_FIELD_CLASS)} /></FormControl><FormMessage/></FormItem>
                   )} />
                 </TableCell>
                 <TableCell>
                   <FormField control={control} name={`items.${parentIndex}.children.${ci}.dateTo`} render={({ field }) => (
-                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="To" className="w-[140px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="To" className={cn("w-[140px]", BILL5_FIELD_CLASS)} /></FormControl><FormMessage/></FormItem>
                   )} />
                 </TableCell>
                 <TableCell className="align-top">
                   <FormField control={control} name={`items.${parentIndex}.children.${ci}.time`} render={({ field }) => (
-                    <FormItem><FormControl><Input placeholder="10:00 AM" {...field} autoComplete="off" className="w-[110px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input placeholder="10:00 AM" {...field} autoComplete="off" className={cn("w-[110px]", BILL5_FIELD_CLASS)} /></FormControl><FormMessage/></FormItem>
                   )} />
                 </TableCell>
                 <TableCell>
                   <FormField control={control} name={`items.${parentIndex}.children.${ci}.vehicle`} render={({ field }) => (
-                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="Vehicle" className="w-[120px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem>
+                      <Select value={field.value || ""} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger className={cn("w-[120px]", BILL5_FIELD_CLASS)}>
+                            <SelectValue placeholder="Vehicle" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="Rickshaw">Rickshaw</SelectItem>
+                          <SelectItem value="Bus">Bus</SelectItem>
+                          <SelectItem value="CNG">CNG</SelectItem>
+                          <SelectItem value="Boat">Boat</SelectItem>
+                          <SelectItem value="Auto Rickshaw">Auto Rickshaw</SelectItem>
+                          <SelectItem value="Launch">Launch</SelectItem>
+                          <SelectItem value="Metro Rail">Metro Rail</SelectItem>
+                          <SelectItem value="Motorcycle">Motorcycle</SelectItem>
+                          <SelectItem value="Speed Boat">Speed Boat</SelectItem>
+                          <SelectItem value="Train">Train</SelectItem>
+                          <SelectItem value="Others">Others</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage/>
+                    </FormItem>
                   )} />
                 </TableCell>
-                {(["local","trip","food","hotel","others","advance"] as const).map((k) => (
+                {(["local", ...selectedColumns] as const).map((k) => (
                   <TableCell key={k} className="text-right">
                     <FormField control={control} name={`items.${parentIndex}.children.${ci}.${k}`} render={({ field }) => (
                       <FormItem>
                         <FormControl>
-                          <Input type="number" step="0.01" className="no-spinner text-right w-[90px]" value={field.value ?? ""} onChange={(e)=> field.onChange(e.target.value==="" ? undefined : Number(e.target.value))} />
+                          <Input type="number" step="0.01" className={cn("no-spinner w-[90px] text-right", BILL5_FIELD_CLASS)} value={field.value ?? ""} onChange={(e)=> field.onChange(e.target.value==="" ? undefined : Number(e.target.value))} />
                         </FormControl>
                         <FormMessage/>
                       </FormItem>
@@ -399,11 +436,11 @@ function Bill5ChildTable({
                 </TableCell>
                 <TableCell>
                   <FormField control={control} name={`items.${parentIndex}.children.${ci}.remarks`} render={({ field }) => (
-                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="Remarks" className="w-[160px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="Remarks" className={cn("w-[160px]", BILL5_FIELD_CLASS)} /></FormControl><FormMessage/></FormItem>
                   )} />
                 </TableCell>
                 <TableCell>
-                  <input type="file" accept="image/*,application/pdf" onChange={(e) => onPickFile(parentIndex, ci, e.currentTarget.files?.[0] ?? null)} />
+                  <input className="max-w-[190px] rounded-md border border-slate-300 bg-white text-xs file:mr-2 file:border-0 file:border-r file:border-slate-200 file:bg-slate-50 file:px-3 file:py-2 file:font-medium" type="file" accept="image/*,application/pdf" onChange={(e) => onPickFile(parentIndex, ci, e.currentTarget.files?.[0] ?? null)} />
                   {files?.[parentIndex]?.[ci] ? <div className="text-xs text-muted-foreground mt-1 truncate max-w-[140px]">{files[parentIndex][ci]?.name}</div> : null}
                 </TableCell>
                 <TableCell className="text-right">
@@ -436,6 +473,8 @@ function EditorBill5({
   onPickFile,
   files,
   employeeName,
+  selectedColumns,
+  onToggleColumn,
 }: {
   control: any;
   fields: any[];
@@ -444,14 +483,45 @@ function EditorBill5({
   onPickFile: (parentIndex: number, childIndex: number, f: File | null) => void;
   files: (File | null)[][];
   employeeName?: string;
+  selectedColumns: Bill5OptionalColumn[];
+  onToggleColumn: (column: Bill5OptionalColumn, enabled: boolean) => void;
 }) {
   return (
     <div className="w-full max-w-full overflow-hidden">
-      <div className="w-full max-w-full overflow-hidden rounded-lg border">
+      <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50/70 p-4 shadow-sm">
+        <div className="mb-3 flex items-center gap-2">
+          <span className="text-sm font-semibold text-slate-800">Add columns</span>
+          <span className="text-xs text-slate-500">Tick to add, untick to remove</span>
+        </div>
+        <div className="flex flex-wrap gap-2.5">
+          {BILL5_OPTIONAL_COLUMNS.map((column) => {
+            const checked = selectedColumns.includes(column.key);
+            return (
+              <label
+                key={column.key}
+                className={cn(
+                  "flex cursor-pointer select-none items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition-colors",
+                  checked
+                    ? "border-primary/40 bg-primary/5 text-primary"
+                    : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+                )}
+              >
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={(value) => onToggleColumn(column.key, value === true)}
+                  className="h-5 w-5 rounded-full border-slate-400 data-[state=checked]:border-primary"
+                />
+                {column.label}
+              </label>
+            );
+          })}
+        </div>
+      </div>
+      <div className="w-full max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="w-full max-w-full overflow-x-auto">
           <Table className="w-max min-w-[1700px]">
-            <TableHeader>
-              <TableRow>
+            <TableHeader className="bg-slate-50/90">
+              <TableRow className="border-slate-200 hover:bg-transparent">
                 <TableHead>SL</TableHead>
                 <TableHead>Date From</TableHead>
                 <TableHead>Date To</TableHead>
@@ -465,7 +535,7 @@ function EditorBill5({
 
             <TableBody>
               {fields.map((f, i) => (
-                <TableRow key={f.id ?? i}>
+                <TableRow key={f.id ?? i} className="border-slate-200 hover:bg-slate-50/30">
                   <TableCell className="p-1 pt-3 font-medium">
                     {i + 1}
                   </TableCell>
@@ -485,6 +555,7 @@ function EditorBill5({
                                     variant="outline"
                                     className={cn(
                                       "w-[150px] justify-start pl-3 text-left",
+                                      BILL5_FIELD_CLASS,
                                       !field.value && "text-muted-foreground"
                                     )}
                                   >
@@ -527,7 +598,7 @@ function EditorBill5({
                               placeholder="Incident"
                               {...field}
                               autoComplete="off"
-                              className="w-[220px]"
+                              className={cn("w-[220px]", BILL5_FIELD_CLASS)}
                             />
                           </FormControl>
                           <FormMessage />
@@ -542,6 +613,7 @@ function EditorBill5({
                       parentIndex={i}
                       files={files}
                       onPickFile={onPickFile}
+                      selectedColumns={selectedColumns}
                     />
                   </TableCell>
 
@@ -605,6 +677,10 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
   const [mounted, setMounted] = useState(false);
   const isEmployeeView = viewerRole === "employee";
   const showNameColumn = viewerRole === "management" || viewerRole === "accounts" || viewerRole === "supervisor";
+  const incidentWarningFor = (incident: string) =>
+    viewerRole === "supervisor"
+      ? b.incidentWarnings?.[incident.trim().replace(/\s+/g, " ").toLowerCase()]
+      : undefined;
 
   useEffect(() => {
     setMounted(true);
@@ -690,6 +766,7 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
         incident: "",
         purpose: it.purpose || "",
         vehicle: "",
+        selectedColumns: undefined,
         local : 0,
         trip: 0,
         food: 0,
@@ -705,6 +782,13 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
       });
     }
   });
+
+  const storedSelections = groups.flatMap((group) => group.children.map((child) => child.selectedColumns));
+  const selectedColumns = storedSelections.every((selection) => selection === undefined)
+    ? BILL5_OPTIONAL_COLUMNS.map((column) => column.key)
+    : BILL5_OPTIONAL_COLUMNS
+        .map((column) => column.key)
+        .filter((key) => storedSelections.some((selection) => selection?.includes(key)));
 
   const total = groups.reduce((acc, g) => {
     return (
@@ -740,11 +824,9 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
               <TableHead className="text-sm font-semibold">Purpose</TableHead>
               <TableHead className="text-sm font-semibold">Vehicle</TableHead>
               <TableHead className="text-sm font-semibold text-right">Local con</TableHead>
-              <TableHead className="text-sm font-semibold text-right">Trip con</TableHead>
-              <TableHead className="text-sm font-semibold text-right">Food</TableHead>
-              <TableHead className="text-sm font-semibold text-right">Hotel</TableHead>
-              <TableHead className="text-sm font-semibold text-right">Others</TableHead>
-              <TableHead className="text-sm font-semibold text-right">Advance</TableHead>
+              {BILL5_OPTIONAL_COLUMNS.filter((column) => selectedColumns.includes(column.key)).map((column) => (
+                <TableHead key={column.key} className="text-sm font-semibold text-right">{column.label}</TableHead>
+              ))}
               <TableHead className="text-sm font-semibold text-right">Net</TableHead>
               <TableHead className="text-sm font-semibold">Remarks</TableHead>
               <TableHead className="text-sm font-semibold">Attach</TableHead>
@@ -768,7 +850,14 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
                             {showNameColumn ? <TableCell className="p-3 text-sm" rowSpan={g.children.length}>{g.name || "-"}</TableCell> : null}
                             <TableCell className="p-3 text-sm" rowSpan={g.children.length}>{format(g.dateFrom, "MMM d")}</TableCell>
                             <TableCell className="p-3 text-sm" rowSpan={g.children.length}>{format(g.dateTo, "MMM d")}</TableCell>
-                            <TableCell className="p-3 text-sm" rowSpan={g.children.length}>{g.incident || "-"}</TableCell>
+                            <TableCell className="p-3 text-sm align-top" rowSpan={g.children.length}>
+                              <div>{g.incident || "-"}</div>
+                              {incidentWarningFor(g.incident) ? (
+                                <p className="mt-1 max-w-[220px] text-xs font-medium leading-4 text-red-600">
+                                  Incident &quot;{g.incident}&quot; was already used once by {incidentWarningFor(g.incident)}.
+                                </p>
+                              ) : null}
+                            </TableCell>
                               
                           </>
                         ) : null}
@@ -779,11 +868,11 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
                         <TableCell className="p-3 text-sm">{c.purpose || "-"}</TableCell>
                         <TableCell className="p-3 text-sm">{c.vehicle || "-"}</TableCell>
                         <TableCell className="p-3 text-sm text-right">{Number(c.local || 0).toFixed(2)}</TableCell>
-                        <TableCell className="p-3 text-sm text-right">{Number(c.trip || 0).toFixed(2)}</TableCell>
-                        <TableCell className="p-3 text-sm text-right">{Number(c.food || 0).toFixed(2)}</TableCell>
-                        <TableCell className="p-3 text-sm text-right">{Number(c.hotel || 0).toFixed(2)}</TableCell>
-                        <TableCell className="p-3 text-sm text-right">{Number(c.others || 0).toFixed(2)}</TableCell>
-                        <TableCell className="p-3 text-sm text-right">{Number(c.advance || 0).toFixed(2)}</TableCell>
+                        {selectedColumns.map((column) => (
+                          <TableCell key={column} className="p-3 text-sm text-right">
+                            {Number(c[column] || 0).toFixed(2)}
+                          </TableCell>
+                        ))}
                         <TableCell className="p-3 text-sm text-right">{net.toFixed(2)}</TableCell>
                         <TableCell className="p-3 text-sm">{c.remarks || "-"}</TableCell>
                         <TableCell className="p-3 text-sm">
@@ -800,7 +889,7 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
                   });
             })}
             <TableRow className="font-semibold bg-muted/30 text-sm">
-              <TableCell colSpan={showNameColumn ? 16 : 15} className="p-3 text-right text-sm">Total Tk</TableCell>
+              <TableCell colSpan={11 + selectedColumns.length + (showNameColumn ? 1 : 0)} className="p-3 text-right text-sm">Total Tk</TableCell>
               <TableCell className="p-3 text-right text-sm font-bold">{total.toFixed(2)}</TableCell>
               <TableCell className="p-3 text-sm">-</TableCell>
               <TableCell className="p-3 text-sm">-</TableCell>
@@ -826,6 +915,16 @@ export function BillForm(props: Props) {
 
   const initialFormat = props.bill ? detectFormat(props.bill.items) : "BILL1";
   const [formatType, setFormatType] = useState<BillFormat>(initialFormat);
+  const [bill5SelectedColumns, setBill5SelectedColumns] = useState<Bill5OptionalColumn[]>(() => {
+    if (initialFormat !== "BILL5" || !props.bill?.items.length) return [];
+    const selections = props.bill.items.map((item) => decB5Child(item.purpose).selectedColumns);
+    if (selections.every((selection) => selection === undefined)) {
+      return BILL5_OPTIONAL_COLUMNS.map((column) => column.key);
+    }
+    return BILL5_OPTIONAL_COLUMNS
+      .map((column) => column.key)
+      .filter((key) => selections.some((selection) => selection?.includes(key)));
+  });
 
   // Employee Code to display + submit (from existing bill or current user)
   const effectiveEmployeeCode =
@@ -1238,7 +1337,7 @@ export function BillForm(props: Props) {
       const attachments: File[] = [];
       (data.items as RowB5[]).forEach((parent) => {
         (parent.children || []).forEach((child) => {
-          const packed = encB5Child(parent, child);
+          const packed = encB5Child(parent, child, bill5SelectedColumns);
           const sum = (Number(child.local)||0)+(Number(child.trip)||0)+(Number(child.food)||0)+(Number(child.hotel)||0)+(Number(child.others)||0);
           const net = sum - (Number(child.advance)||0);
           flatRows.push({
@@ -1454,6 +1553,22 @@ export function BillForm(props: Props) {
             onPickFile={setRowFileAt}
             files={rowFiles}
             employeeName={"user" in props ? (props.user as any).name : ""}
+            selectedColumns={bill5SelectedColumns}
+            onToggleColumn={(column, enabled) => {
+              setBill5SelectedColumns((current) =>
+                enabled
+                  ? BILL5_OPTIONAL_COLUMNS.map((item) => item.key).filter((key) => key === column || current.includes(key))
+                  : current.filter((key) => key !== column)
+              );
+              if (!enabled) {
+                const items = form.getValues("items") as RowB5[];
+                items.forEach((parent, parentIndex) => {
+                  (parent.children || []).forEach((_, childIndex) => {
+                    form.setValue(`items.${parentIndex}.children.${childIndex}.${column}` as any, undefined);
+                  });
+                });
+              }
+            }}
           />
         )}
         {/* {formatType === "BILL4" && (
