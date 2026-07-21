@@ -75,6 +75,18 @@ export function LoginForm() {
 
           <SubmitButton />
         </form>
+
+        <div className="mt-5 border-t border-slate-200 pt-4 text-center">
+          <p className="text-sm text-muted-foreground">
+            Don&apos;t have an account?{" "}
+            <Link
+              href="/registerbyauthority1610"
+              className="font-semibold text-primary underline-offset-4 hover:underline"
+            >
+              Register
+            </Link>
+          </p>
+        </div>
       </CardContent>
     </Card>
   );

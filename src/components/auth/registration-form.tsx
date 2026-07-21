@@ -240,6 +240,9 @@ export function RegistrationForm({ supervisors }: { supervisors: Supervisor[] })
 
             {/* Employee Code (forced uppercase + live preview) */}
             <div className="space-y-2">
+              <Label htmlFor="employeeCode">
+                Employee ID / Code <span className="text-red-500">*</span>
+              </Label>
               <Input
                 id="employeeCode"
                 placeholder="e.g. EMP-123"
