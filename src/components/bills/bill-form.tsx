@@ -23,6 +23,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 
 import type { User, BillStatus } from "@/lib/types";
@@ -105,6 +106,7 @@ type RowB4 = {
 /* Row shape for combined Bill-5 (merge of Bill-2, Bill-3, Bill-4) */
 type RowB5Child = {
   purpose: string;
+  bankName?: string;
   time?: string;
   dateFrom?: string | Date;
   dateTo?: string | Date;
@@ -127,14 +129,34 @@ type RowB5 = {
   children: RowB5Child[];
 };
 
-type Bill5OptionalColumn = "trip" | "food" | "hotel" | "others" | "advance";
+type Bill5OptionalColumn = "bankName" | "trip" | "food" | "hotel" | "others" | "advance";
 const BILL5_OPTIONAL_COLUMNS: Array<{ key: Bill5OptionalColumn; label: string }> = [
+  { key: "bankName", label: "Bank Name" },
   { key: "trip", label: "Trip Conveyance" },
   { key: "food", label: "Food" },
   { key: "hotel", label: "Hotel" },
   { key: "others", label: "Others" },
   { key: "advance", label: "Advance" },
 ];
+const BILL5_BANKS = [
+  "AB Bank Limited",
+  "Community Bank Bangladesh Limited",
+  "Mercantile Bank Limited",
+  "IFIC Bank Limited",
+  "Eastern Bank Limited",
+  "Meghna Bank Limited",
+  "Uttara Bank Limited",
+  "Al-Arafah Islami Bank Limited",
+  "First Security Islami Bank Limited",
+  "ICB Islamic Bank Limited",
+  "Islami Bank Bangladesh Limited",
+  "Social Islami Bank Limited",
+  "Union Bank Ltd",
+  "Bank Al-Falah Limited",
+  "Bangladesh Krishi Bank",
+  "Sonali Bank Limited",
+  "International Finance Investment and Commerce Bank PLC",
+] as const;
 const BILL5_FIELD_CLASS = "h-9 rounded-md border-slate-300 bg-white shadow-sm transition-colors hover:border-slate-400 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15";
 
 /* ---------- Schema ---------- */
@@ -283,6 +305,7 @@ const encB5Child = (parent: RowB5, child: RowB5Child, selectedColumns: Bill5Opti
     dateTo: child.dateTo ? (child.dateTo instanceof Date ? child.dateTo.toISOString() : String(child.dateTo)) : "",
     incident: parent.incident||"",
     purpose: child.purpose||"",
+    bankName: child.bankName||"",
     vehicle: child.vehicle||"",
     selectedColumns,
     local, trip, food, hotel, others, advance, total, net, remarks: child.remarks||""
@@ -299,13 +322,14 @@ const encB5Child = (parent: RowB5, child: RowB5Child, selectedColumns: Bill5Opti
       dateTo: String(o.dateTo || ""),
       incident: String(o.incident||""),
       purpose: String(o.purpose||""),
+      bankName: String(o.bankName||""),
       vehicle: String(o.vehicle||""),
       selectedColumns: Array.isArray(o.selectedColumns) ? o.selectedColumns.filter((key: unknown) => BILL5_OPTIONAL_COLUMNS.some((column) => column.key === key)) as Bill5OptionalColumn[] : undefined,
       local: Number(o.local||0), trip: Number(o.trip||0), food: Number(o.food||0), hotel: Number(o.hotel||0), others: Number(o.others||0), advance: Number(o.advance||0), total: Number(o.total||0), net: Number(o.net||0), remarks: String(o.remarks||""),
       attachmentUrl: undefined as (string | null | undefined)
     };
   } catch {
-    return { parentName: "", time: "", dateFrom: "", dateTo: "", incident: "", purpose: s, vehicle: "", selectedColumns: undefined, local:0, trip:0, food:0, hotel:0, others:0, advance:0, total:0, net:0, remarks: "", attachmentUrl: undefined };
+    return { parentName: "", time: "", dateFrom: "", dateTo: "", incident: "", purpose: s, bankName: "", vehicle: "", selectedColumns: undefined, local:0, trip:0, food:0, hotel:0, others:0, advance:0, total:0, net:0, remarks: "", attachmentUrl: undefined };
   }
 };
 
@@ -324,6 +348,38 @@ function SubmitButton({ isPending, children, disabled }: { isPending:boolean; ch
     <Button type="submit" className="min-w-[140px] w-auto bg-accent hover:bg-accent/90 px-4" disabled={isPending || disabled}>
       {isPending ? "Working..." : children}
     </Button>
+  );
+}
+
+function AttachmentPreview({ url }: { url: string }) {
+  const isPdf = /\.pdf(?:$|[?#])/i.test(url);
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button type="button" variant="link" className="h-auto p-0 text-primary underline">
+          View
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="grid h-[85vh] w-[95vw] max-w-5xl grid-rows-[auto_minmax(0,1fr)_auto] gap-3 p-4">
+        <DialogHeader>
+          <DialogTitle>Attachment Preview</DialogTitle>
+        </DialogHeader>
+        <div className="min-h-0 overflow-auto rounded-md border bg-slate-100">
+          {isPdf ? (
+            <iframe src={url} title="Bill attachment PDF" className="h-full min-h-[65vh] w-full bg-white" />
+          ) : (
+            <div className="flex min-h-full items-center justify-center p-3">
+              <img src={url} alt="Bill attachment" className="max-h-[68vh] max-w-full object-contain" />
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end">
+          <Button asChild type="button" variant="outline" size="sm">
+            <a href={url} target="_blank" rel="noopener noreferrer">Open in new tab</a>
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -349,13 +405,14 @@ function Bill5ChildTable({
         <Table>
           <TableHeader className="bg-slate-50/90">
             <TableRow className="border-slate-200 hover:bg-transparent">
+              {selectedColumns.includes("bankName") ? <TableHead>Bank Name</TableHead> : null}
               <TableHead>Purpose</TableHead>
               <TableHead className="min-w-[120px]">From</TableHead>
               <TableHead className="min-w-[120px]">To</TableHead>
               <TableHead className="min-w-[90px]">Time</TableHead>
               <TableHead>Vehicle</TableHead>
               <TableHead className="text-right">Local con</TableHead>
-              {BILL5_OPTIONAL_COLUMNS.filter((column) => selectedColumns.includes(column.key)).map((column) => (
+              {BILL5_OPTIONAL_COLUMNS.filter((column) => column.key !== "bankName" && selectedColumns.includes(column.key)).map((column) => (
                 <TableHead key={column.key} className="text-right">{column.label}</TableHead>
               ))}
               <TableHead className="text-right">Total Amount</TableHead>
@@ -367,6 +424,27 @@ function Bill5ChildTable({
           <TableBody>
             {childFields.map((cf, ci) => (
               <TableRow key={cf.id} className="border-slate-200 hover:bg-slate-50/40">
+                {selectedColumns.includes("bankName") ? (
+                  <TableCell>
+                    <FormField control={control} name={`items.${parentIndex}.children.${ci}.bankName`} render={({ field }) => (
+                      <FormItem>
+                        <Select value={field.value || ""} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger className={cn("w-[250px]", BILL5_FIELD_CLASS)}>
+                              <SelectValue placeholder="Select bank" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {BILL5_BANKS.map((bank) => (
+                              <SelectItem key={bank} value={bank}>{bank}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage/>
+                      </FormItem>
+                    )} />
+                  </TableCell>
+                ) : null}
                 <TableCell>
                   <FormField control={control} name={`items.${parentIndex}.children.${ci}.purpose`} render={({ field }) => (
                     <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="Purpose" className={cn("w-[220px]", BILL5_FIELD_CLASS)} /></FormControl><FormMessage/></FormItem>
@@ -414,7 +492,7 @@ function Bill5ChildTable({
                     </FormItem>
                   )} />
                 </TableCell>
-                {(["local", ...selectedColumns] as const).map((k) => (
+                {(["local", ...selectedColumns.filter((column) => column !== "bankName")] as Array<"local" | Exclude<Bill5OptionalColumn, "bankName">>).map((k) => (
                   <TableCell key={k} className="text-right">
                     <FormField control={control} name={`items.${parentIndex}.children.${ci}.${k}`} render={({ field }) => (
                       <FormItem>
@@ -676,7 +754,7 @@ function EditorBill5({
 function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fallbackDesignation?: string; viewerRole?: string }) {
   const [mounted, setMounted] = useState(false);
   const isEmployeeView = viewerRole === "employee";
-  const showNameColumn = viewerRole === "management" || viewerRole === "accounts" || viewerRole === "supervisor";
+  const isDraft = String(b.status).toUpperCase() === "DRAFT";
   const incidentWarningFor = (incident: string) =>
     viewerRole === "supervisor"
       ? b.incidentWarnings?.[incident.trim().replace(/\s+/g, " ").toLowerCase()]
@@ -690,7 +768,7 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
     return <div className="rounded-xl border bg-white p-6 shadow-sm" />;
   }
 
-  if (isEmployeeView) {
+  if (isEmployeeView && !isDraft) {
     return (
       <div className="rounded-xl border bg-white p-6 shadow-sm">
         <div className="rounded-lg border bg-muted/20 p-8 text-center">
@@ -765,6 +843,7 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
         time: "",
         incident: "",
         purpose: it.purpose || "",
+        bankName: "",
         vehicle: "",
         selectedColumns: undefined,
         local : 0,
@@ -785,7 +864,7 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
 
   const storedSelections = groups.flatMap((group) => group.children.map((child) => child.selectedColumns));
   const selectedColumns = storedSelections.every((selection) => selection === undefined)
-    ? BILL5_OPTIONAL_COLUMNS.map((column) => column.key)
+    ? BILL5_OPTIONAL_COLUMNS.filter((column) => column.key !== "bankName").map((column) => column.key)
     : BILL5_OPTIONAL_COLUMNS
         .map((column) => column.key)
         .filter((key) => storedSelections.some((selection) => selection?.includes(key)));
@@ -814,17 +893,17 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
           <TableHeader>
             <TableRow>
               <TableHead className="text-sm font-semibold">No.</TableHead>
-              {showNameColumn ? <TableHead className="text-sm font-semibold min-w-[100px]">Name</TableHead> : null}
               <TableHead className="text-sm font-semibold">Date From</TableHead>
               <TableHead className="text-sm font-semibold">Date To</TableHead>
               <TableHead className="text-sm font-semibold min-w-[120px]">Incident</TableHead>
               <TableHead className="text-sm font-semibold min-w-[70px]">Time</TableHead>
               <TableHead className="text-sm font-semibold">From</TableHead>
               <TableHead className="text-sm font-semibold">To</TableHead>
+              {selectedColumns.includes("bankName") ? <TableHead className="text-sm font-semibold min-w-[180px]">Bank Name</TableHead> : null}
               <TableHead className="text-sm font-semibold">Purpose</TableHead>
               <TableHead className="text-sm font-semibold">Vehicle</TableHead>
               <TableHead className="text-sm font-semibold text-right">Local con</TableHead>
-              {BILL5_OPTIONAL_COLUMNS.filter((column) => selectedColumns.includes(column.key)).map((column) => (
+              {BILL5_OPTIONAL_COLUMNS.filter((column) => column.key !== "bankName" && selectedColumns.includes(column.key)).map((column) => (
                 <TableHead key={column.key} className="text-sm font-semibold text-right">{column.label}</TableHead>
               ))}
               <TableHead className="text-sm font-semibold text-right">Net</TableHead>
@@ -847,10 +926,9 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
                         {ci === 0 ? (
                           <>
                             <TableCell className="p-3 text-sm" rowSpan={g.children.length}>{i + 1}</TableCell>
-                            {showNameColumn ? <TableCell className="p-3 text-sm" rowSpan={g.children.length}>{g.name || "-"}</TableCell> : null}
                             <TableCell className="p-3 text-sm" rowSpan={g.children.length}>{format(g.dateFrom, "MMM d")}</TableCell>
                             <TableCell className="p-3 text-sm" rowSpan={g.children.length}>{format(g.dateTo, "MMM d")}</TableCell>
-                            <TableCell className="p-3 text-sm align-top" rowSpan={g.children.length}>
+                            <TableCell className="p-3 text-sm align-middle" rowSpan={g.children.length}>
                               <div>{g.incident || "-"}</div>
                               {incidentWarningFor(g.incident) ? (
                                 <p className="mt-1 max-w-[220px] text-xs font-medium leading-4 text-red-600">
@@ -865,10 +943,11 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
                         <TableCell className="p-3 text-sm">{c.time || "-"}</TableCell>
                         <TableCell className="p-3 text-sm">{c.dateFrom || "-"}</TableCell>
                         <TableCell className="p-3 text-sm">{c.dateTo || "-"}</TableCell>
+                        {selectedColumns.includes("bankName") ? <TableCell className="p-3 text-sm">{c.bankName || "-"}</TableCell> : null}
                         <TableCell className="p-3 text-sm">{c.purpose || "-"}</TableCell>
                         <TableCell className="p-3 text-sm">{c.vehicle || "-"}</TableCell>
                         <TableCell className="p-3 text-sm text-right">{Number(c.local || 0).toFixed(2)}</TableCell>
-                        {selectedColumns.map((column) => (
+                        {selectedColumns.filter((column) => column !== "bankName").map((column) => (
                           <TableCell key={column} className="p-3 text-sm text-right">
                             {Number(c[column] || 0).toFixed(2)}
                           </TableCell>
@@ -877,9 +956,7 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
                         <TableCell className="p-3 text-sm">{c.remarks || "-"}</TableCell>
                         <TableCell className="p-3 text-sm">
                           {c.attachmentUrl ? (
-                            <a href={c.attachmentUrl} target="_blank" className="text-primary underline">
-                              View
-                            </a>
+                            <AttachmentPreview url={c.attachmentUrl} />
                           ) : (
                             "-"
                           )}
@@ -889,7 +966,7 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
                   });
             })}
             <TableRow className="font-semibold bg-muted/30 text-sm">
-              <TableCell colSpan={11 + selectedColumns.length + (showNameColumn ? 1 : 0)} className="p-3 text-right text-sm">Total Tk</TableCell>
+              <TableCell colSpan={11 + selectedColumns.length} className="p-3 text-right text-sm">Total Tk</TableCell>
               <TableCell className="p-3 text-right text-sm font-bold">{total.toFixed(2)}</TableCell>
               <TableCell className="p-3 text-sm">-</TableCell>
               <TableCell className="p-3 text-sm">-</TableCell>
@@ -919,7 +996,7 @@ export function BillForm(props: Props) {
     if (initialFormat !== "BILL5" || !props.bill?.items.length) return [];
     const selections = props.bill.items.map((item) => decB5Child(item.purpose).selectedColumns);
     if (selections.every((selection) => selection === undefined)) {
-      return BILL5_OPTIONAL_COLUMNS.map((column) => column.key);
+      return BILL5_OPTIONAL_COLUMNS.filter((column) => column.key !== "bankName").map((column) => column.key);
     }
     return BILL5_OPTIONAL_COLUMNS
       .map((column) => column.key)
@@ -1001,7 +1078,7 @@ export function BillForm(props: Props) {
           const parsed = decB5Child(it.purpose as string);
           const key = parsed.parentName || parsed.incident || String(it.date);
           groups[key] ??= { name: parsed.parentName || "", dateFrom: safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date), incident: parsed.incident, children: [] };
-          groups[key].children.push({ purpose: parsed.purpose, time: parsed.time || "", dateFrom: parsed.dateFrom || "", dateTo: parsed.dateTo || "", vehicle: parsed.vehicle, local: parsed.local, trip: parsed.trip, food: parsed.food, hotel: parsed.hotel, others: parsed.others, advance: parsed.advance, remarks: parsed.remarks });
+          groups[key].children.push({ purpose: parsed.purpose, bankName: parsed.bankName, time: parsed.time || "", dateFrom: parsed.dateFrom || "", dateTo: parsed.dateTo || "", vehicle: parsed.vehicle, local: parsed.local, trip: parsed.trip, food: parsed.food, hotel: parsed.hotel, others: parsed.others, advance: parsed.advance, remarks: parsed.remarks });
         } catch {
           // fallback: push as single parent->child
           const key = String(it.date) + JSON.stringify(it);

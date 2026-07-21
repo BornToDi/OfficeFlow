@@ -710,10 +710,8 @@ async function parseBillForm(formData: FormData, currentUserRole: "employee" | "
       const maybe = formData.get(`attachment_${i}`);
       const looksLikeFile = !!maybe && typeof (maybe as any).arrayBuffer === "function";
       if (looksLikeFile) {
-        try {
-          const url = await saveUpload(maybe as unknown as File);
-          (items[i] as any).attachmentUrl = url;
-        } catch {}
+        const url = await saveUpload(maybe as unknown as File);
+        (items[i] as any).attachmentUrl = url;
       }
     }
   }
@@ -768,6 +766,9 @@ export async function saveDraft(
 
     if (parsed.existingBillId) {
       const existingBill = await getBillById(parsed.existingBillId);
+      parsed.items.forEach((item: any, index: number) => {
+        if (!item.attachmentUrl) item.attachmentUrl = existingBill?.items[index]?.attachmentUrl ?? null;
+      });
       const canPreserveSubmittedStatus =
         session.user.role === "supervisor" &&
         existingBill?.status === "SUBMITTED" &&
@@ -836,6 +837,9 @@ export async function submitBill(
 
 if (parsed.existingBillId) {
   const existingBill = await getBillById(parsed.existingBillId);
+  parsed.items.forEach((item: any, index: number) => {
+    if (!item.attachmentUrl) item.attachmentUrl = existingBill?.items[index]?.attachmentUrl ?? null;
+  });
   const canPreserveSubmittedStatus =
     session.user.role === "supervisor" &&
     existingBill?.status === "SUBMITTED" &&
@@ -1056,7 +1060,11 @@ async function saveUpload(
   const MAX = 5 * 1024 * 1024;
   if (file.size > MAX) throw new Error("File too large (max 5MB).");
   const type = file.type || "";
-  if (!/(pdf|image)/i.test(type)) throw new Error("Only images or PDF allowed.");
+  const originalExtension = path.extname(file.name || "").toLowerCase();
+  const allowedExtension = [".pdf", ".png", ".jpg", ".jpeg", ".webp"].includes(originalExtension);
+  if (!/(pdf|image)/i.test(type) && !allowedExtension) {
+    throw new Error("Only PDF, PNG, JPG, JPEG, or WEBP files are allowed.");
+  }
 
   const buf = Buffer.from(await file.arrayBuffer());
   const extGuess =
@@ -1065,7 +1073,7 @@ async function saveUpload(
     type.includes("jpeg") ? ".jpg" :
     type.includes("jpg") ? ".jpg" :
     type.includes("webp") ? ".webp" :
-    "";
+    originalExtension;
 
   const name = `${Date.now()}_${crypto.randomBytes(6).toString("hex")}${extGuess}`;
 
