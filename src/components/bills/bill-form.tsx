@@ -67,12 +67,17 @@ type RowB1 = {
   amount?: number; // start blank
 };
 type RowB2 = {
-  name: string;
+  from: string;
+  to: string;
   dateFrom: Date;
   dateTo: Date;
   purpose: string;
+  bankName?: string;
+  selectedColumns?: Bill2OptionalColumn[];
   local?: number;
   trip?: number;
+  food?: number;
+  hotel?: number;
   others?: number;
   advance?: number;
   remarks?: string;
@@ -83,6 +88,8 @@ type RowB3 = {
   dateFrom: Date;
   dateTo: Date;
   purpose: string;
+  bankName?: string;
+  showBankName?: boolean;
   food?: number;
   hotel?: number;
   others?: number;
@@ -128,6 +135,15 @@ type RowB5 = {
   incident?: string;
   children: RowB5Child[];
 };
+type Bill2OptionalColumn = "bankName" | "trip" | "food" | "hotel" | "others" | "advance";
+const BILL2_OPTIONAL_COLUMNS: Array<{ key: Bill2OptionalColumn; label: string }> = [
+  { key: "bankName", label: "Bank Name" },
+  { key: "trip", label: "Trip Conveyance" },
+  { key: "food", label: "Food" },
+  { key: "hotel", label: "Hotel" },
+  { key: "others", label: "Others" },
+  { key: "advance", label: "Advance" },
+];
 
 type Bill5OptionalColumn = "bankName" | "trip" | "food" | "hotel" | "others" | "advance";
 const BILL5_OPTIONAL_COLUMNS: Array<{ key: Bill5OptionalColumn; label: string }> = [
@@ -188,23 +204,26 @@ const detectFormat = (items?: BillViewItem[]): BillFormat => {
 
 /* Bill-2 payload (local/trip/others/advance) */
 const encB2 = (r: RowB2) => {
-  const total = (Number(r.local)||0)+(Number(r.trip)||0)+(Number(r.others)||0);
+  const total = (Number(r.local)||0)+(Number(r.trip)||0)+(Number(r.food)||0)+(Number(r.hotel)||0)+(Number(r.others)||0);
   const net = total - (Number(r.advance)||0);
   return JSON.stringify({
-    name: r.name||"", purpose: r.purpose||"",
-    local: Number(r.local||0), trip: Number(r.trip||0), others: Number(r.others||0),
+    from: r.from||"", to: r.to||"", purpose: r.purpose||"", bankName: r.bankName||"", selectedColumns: r.selectedColumns||[],
+    local: Number(r.local||0), trip: Number(r.trip||0), food: Number(r.food||0), hotel: Number(r.hotel||0), others: Number(r.others||0),
     advance: Number(r.advance||0), total, net, remarks: r.remarks||""
   });
 };
 const decB2 = (s: string) => {
   try {
     const o = JSON.parse(s||"{}");
-    const local = Number(o.local||0), trip = Number(o.trip||0), others = Number(o.others||0), advance = Number(o.advance||0);
-    const total = Number.isFinite(o.total) ? Number(o.total) : local+trip+others;
+    const local = Number(o.local||0), trip = Number(o.trip||0), food = Number(o.food||0), hotel = Number(o.hotel||0), others = Number(o.others||0), advance = Number(o.advance||0);
+    const total = Number.isFinite(o.total) ? Number(o.total) : local+trip+food+hotel+others;
     const net = Number.isFinite(o.net) ? Number(o.net) : total-advance;
-    return { name:String(o.name||""), purpose:String(o.purpose||""), local, trip, others, advance, total, net, remarks:String(o.remarks||"") };
+    const selectedColumns = Array.isArray(o.selectedColumns)
+      ? o.selectedColumns.filter((key: unknown) => BILL2_OPTIONAL_COLUMNS.some((column) => column.key === key)) as Bill2OptionalColumn[]
+      : undefined;
+    return { from:String(o.from ?? o.name ?? ""), to:String(o.to||""), purpose:String(o.purpose||""), bankName:String(o.bankName||""), selectedColumns, local, trip, food, hotel, others, advance, total, net, remarks:String(o.remarks||"") };
   } catch {
-    return { name:"", purpose:s, local:0, trip:0, others:0, advance:0, total:0, net:0, remarks:"" };
+    return { from:"", to:"", purpose:s, bankName:"", selectedColumns:undefined, local:0, trip:0, food:0, hotel:0, others:0, advance:0, total:0, net:0, remarks:"" };
   }
 };
 
@@ -213,7 +232,7 @@ const encB3 = (r: RowB3) => {
   const total = (Number(r.food)||0)+(Number(r.hotel)||0)+(Number(r.others)||0);
   const net = total - (Number(r.advance)||0);
   return JSON.stringify({
-    from: r.from||"", to: r.to||"", purpose: r.purpose||"",
+    from: r.from||"", to: r.to||"", purpose: r.purpose||"", bankName: r.bankName||"", showBankName: !!r.showBankName,
     food: Number(r.food||0), hotel: Number(r.hotel||0), others: Number(r.others||0),
     advance: Number(r.advance||0), total, net, remarks: r.remarks||""
   });
@@ -224,9 +243,9 @@ const decB3 = (s: string) => {
     const food = Number(o.food||0), hotel = Number(o.hotel)||0, others = Number(o.others)||0, advance = Number(o.advance)||0;
     const total = Number.isFinite(o.total) ? Number(o.total) : food+hotel+others;
     const net = Number.isFinite(o.net) ? Number(o.net) : total-advance;
-    return { from:String(o.from ?? o.name ?? ""), to:String(o.to ?? ""), purpose:String(o.purpose||""), food, hotel, others, advance, total, net, remarks:String(o.remarks||"") };
+    return { from:String(o.from ?? o.name ?? ""), to:String(o.to ?? ""), purpose:String(o.purpose||""), bankName:String(o.bankName||""), showBankName:!!o.showBankName, food, hotel, others, advance, total, net, remarks:String(o.remarks||"") };
   } catch {
-    return { from:"", to:"", purpose:s, food:0, hotel:0, others:0, advance:0, total:0, net:0, remarks:"" };
+    return { from:"", to:"", purpose:s, bankName:"", showBankName:false, food:0, hotel:0, others:0, advance:0, total:0, net:0, remarks:"" };
   }
 };
 
@@ -380,6 +399,18 @@ function AttachmentPreview({ url }: { url: string }) {
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function BankColumnToggle({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {
+  return (
+    <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3 shadow-sm">
+      <label className={cn("inline-flex cursor-pointer select-none items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium", checked ? "border-primary/40 bg-primary/5 text-primary" : "border-slate-300 bg-white")}>
+        <Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} className="h-5 w-5 rounded-full border-slate-400" />
+        Bank Name
+      </label>
+      <span className="ml-3 text-xs text-muted-foreground">Tick to add, untick to remove</span>
+    </div>
   );
 }
 
@@ -992,6 +1023,19 @@ export function BillForm(props: Props) {
 
   const initialFormat = props.bill ? detectFormat(props.bill.items) : "BILL1";
   const [formatType, setFormatType] = useState<BillFormat>(initialFormat);
+  const [bill2SelectedColumns, setBill2SelectedColumns] = useState<Bill2OptionalColumn[]>(() => {
+    if (initialFormat !== "BILL2" || !props.bill?.items.length) return [];
+    const parsed = decB2(props.bill.items[0].purpose);
+    if (parsed.selectedColumns) return parsed.selectedColumns;
+    const legacy = ["trip", "others", "advance"] as Bill2OptionalColumn[];
+    try { if (JSON.parse(props.bill.items[0].purpose || "{}").showBankName) legacy.unshift("bankName"); } catch {}
+    return legacy;
+  });
+  const [bill23BankEnabled, setBill23BankEnabled] = useState(() => {
+    if (!props.bill?.items.length) return false;
+    if (initialFormat === "BILL3") return decB3(props.bill.items[0].purpose).showBankName;
+    return false;
+  });
   const [bill5SelectedColumns, setBill5SelectedColumns] = useState<Bill5OptionalColumn[]>(() => {
     if (initialFormat !== "BILL5" || !props.bill?.items.length) return [];
     const selections = props.bill.items.map((item) => decB5Child(item.purpose).selectedColumns);
@@ -1027,7 +1071,7 @@ export function BillForm(props: Props) {
           formatType === "BILL1"
             ? [{ date: new Date(), from: "", to: "", transport: "", purpose: "", amount: undefined as any }]
             : formatType === "BILL2"
-            ? [{ name: "user" in props ? (props.user as any).name : "", dateFrom:new Date(), dateTo:new Date(), purpose:"", local:undefined as any, trip:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }]
+            ? [{ from:"", to:"", dateFrom:new Date(), dateTo:new Date(), purpose:"", local:undefined as any, trip:undefined as any, food:undefined as any, hotel:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }]
             : formatType === "BILL3"
             ? [{ name: "user" in props ? (props.user as any).name : "", dateFrom:new Date(), dateTo:new Date(), purpose:"", food:undefined as any, hotel:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }]
             : formatType === "BILL5"
@@ -1055,7 +1099,7 @@ export function BillForm(props: Props) {
         supervisorId: (b as any).supervisorId ?? "",
         items: b.items.map<RowB2>((it) => {
           const p = decB2(it.purpose);
-          return { name:p.name, dateFrom:safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date), purpose:p.purpose, local:p.local, trip:p.trip, others:p.others, advance:p.advance, remarks:p.remarks };
+          return { from:p.from, to:p.to, dateFrom:safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date), purpose:p.purpose, bankName:p.bankName, selectedColumns:p.selectedColumns, local:p.local, trip:p.trip, food:p.food, hotel:p.hotel, others:p.others, advance:p.advance, remarks:p.remarks };
         }),
       };
     }
@@ -1066,7 +1110,7 @@ export function BillForm(props: Props) {
         supervisorId: (b as any).supervisorId ?? "",
         items: b.items.map<RowB3>((it) => {
           const p = decB3(it.purpose);
-          return { from:p.from, to:p.to, dateFrom:safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date), purpose:p.purpose, food:p.food, hotel:p.hotel, others:p.others, advance:p.advance, remarks:p.remarks };
+          return { from:p.from, to:p.to, dateFrom:safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date), purpose:p.purpose, bankName:p.bankName, showBankName:p.showBankName, food:p.food, hotel:p.hotel, others:p.others, advance:p.advance, remarks:p.remarks };
         }),
       };
     }
@@ -1156,7 +1200,7 @@ export function BillForm(props: Props) {
     if (formatType === "BILL2") {
       const rows = (watchedItems as RowB2[]) || [];
       const total = rows.reduce((acc, r) => {
-        const sum = (Number(r?.local)||0)+(Number(r?.trip)||0)+(Number(r?.others)||0);
+        const sum = (Number(r?.local)||0)+(Number(r?.trip)||0)+(Number(r?.food)||0)+(Number(r?.hotel)||0)+(Number(r?.others)||0);
         return acc + (sum - (Number(r?.advance)||0));
       }, 0);
       return { total, words: numberToWords(total) + " Only" };
@@ -1218,7 +1262,7 @@ export function BillForm(props: Props) {
     if (formatType === "BILL1") {
       reset({ ...cur, items: [{ date:new Date(), from:"", to:"", transport:"", purpose:"", amount: undefined as any }] });
     } else if (formatType === "BILL2") {
-      reset({ ...cur, items: [{ from:"", to:"", dateFrom:new Date(), dateTo:new Date(), purpose:"", local:undefined as any, trip:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }] });
+      reset({ ...cur, items: [{ from:"", to:"", dateFrom:new Date(), dateTo:new Date(), purpose:"", local:undefined as any, trip:undefined as any, food:undefined as any, hotel:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }] });
       setRowFiles(makeSingleAttachmentRow());
     } else if (formatType === "BILL3") {
       reset({ ...cur, items: [{ from:"", to:"", dateFrom:new Date(), dateTo:new Date(), purpose:"", food:undefined as any, hotel:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }] });
@@ -1235,6 +1279,8 @@ export function BillForm(props: Props) {
 
   /* ---------- require-all validation (top + rows) ---------- */
   const validateAll = (): boolean => {
+    // Bill 2 and Bill 3 intentionally allow partially blank rows.
+    if ((["BILL2", "BILL3"] as BillFormat[]).includes(formatType)) return true;
     let ok = true;
     const setError = form.setError;
     const reasons: string[] = [];
@@ -1264,7 +1310,7 @@ export function BillForm(props: Props) {
       } else if (formatType === "BILL2") {
         const local = asNum(r.local), trip = asNum(r.trip), others = asNum(r.others), advance = asNum(r.advance);
         const total = (Number(local)||0) + (Number(trip)||0) + (Number(others)||0);
-        if (isEmpty(r.name))             { setError(`items.${i}.name` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.name: required`); }
+        if (isEmpty(r.from))             { setError(`items.${i}.from` as any, { type: "manual", message: "Required" }); ok = false; reasons.push(`items.${i}.from: required`); }
         if (!r.dateFrom)                 { setError(`items.${i}.dateFrom` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.dateFrom: required`); }
         if (!r.dateTo)                   { setError(`items.${i}.dateTo` as any, { type: "manual", message: "Pick a date" }); ok = false; reasons.push(`items.${i}.dateTo: required`); }
         if (!(total > 0))                { setError(`items.${i}.local` as any,  { type: "manual", message: "Enter at least one amount" }); ok = false; reasons.push(`items.${i}: enter at least one amount`); }
@@ -1348,8 +1394,8 @@ export function BillForm(props: Props) {
       fd.append("items", JSON.stringify(rows));
     } else if (formatType === "BILL2") {
       const rows = (data.items as RowB2[]).map((r) => {
-        const packed = encB2(r);
-        const sum = (Number(r.local)||0)+(Number(r.trip)||0)+(Number(r.others)||0);
+        const packed = encB2({ ...r, selectedColumns: bill2SelectedColumns });
+        const sum = (Number(r.local)||0)+(Number(r.trip)||0)+(Number(r.food)||0)+(Number(r.hotel)||0)+(Number(r.others)||0);
         const net = sum - (Number(r.advance)||0);
         return {
           date: safeDate(r.dateFrom).toISOString(),
@@ -1369,7 +1415,7 @@ export function BillForm(props: Props) {
       }
     } else if (formatType === "BILL3") {
       const rows = (data.items as RowB3[]).map((r) => {
-        const packed = encB3(r);
+        const packed = encB3({ ...r, showBankName: bill23BankEnabled });
         const sum = (Number(r.food)||0)+(Number(r.hotel)||0)+(Number(r.others)||0);
         const net = sum - (Number(r.advance)||0);
         return {
@@ -1486,6 +1532,23 @@ export function BillForm(props: Props) {
       return next;
     });
   };
+  const toggleBill23Bank = (enabled: boolean) => {
+    setBill23BankEnabled(enabled);
+    const items = form.getValues("items") as Array<RowB2 | RowB3>;
+    items.forEach((_, index) => {
+      form.setValue(`items.${index}.showBankName` as any, enabled);
+      if (!enabled) form.setValue(`items.${index}.bankName` as any, undefined);
+    });
+  };
+  const toggleBill2Column = (column: Bill2OptionalColumn, enabled: boolean) => {
+    setBill2SelectedColumns((current) => enabled
+      ? BILL2_OPTIONAL_COLUMNS.map((item) => item.key).filter((key) => key === column || current.includes(key))
+      : current.filter((key) => key !== column));
+    if (!enabled) {
+      const items = form.getValues("items") as RowB2[];
+      items.forEach((_, index) => form.setValue(`items.${index}.${column}` as any, undefined));
+    }
+  };
 
   const appendChildToParent = (parentIndex: number) => {
     const items = form.getValues("items") || [];
@@ -1591,8 +1654,8 @@ export function BillForm(props: Props) {
             onChange={(e)=> setFormatType(e.target.value as BillFormat)}
           >
             <option value="BILL1">Bill-1 (standard)</option>
-            <option value="BILL2">Bill-2 (Local/Trip/Others/Advance)</option>
-            <option value="BILL3">Bill-3 (Food/Hotel/Others/Advance)</option>
+            <option value="BILL2">Bill-2 (Combined Conveyance / Food / Hotel)</option>
+            {initialFormat === "BILL3" ? <option value="BILL3">Bill-3 (Legacy)</option> : null}
             {/* <option value="BILL4">Bill-4 (Date/Time/Incident + Food/Hotel/Others/Advance)</option> */}
             <option value="BILL5">Bill-5 (Combined: local/trip + food/hotel + incident/time)</option>
           </select>
@@ -1609,6 +1672,8 @@ export function BillForm(props: Props) {
             remove={removeWithFile}
             onPickFile={(i,f)=> setRowFileAt(i,f)}
             files={rowFiles.map((r)=> r?.[0] ?? null)}
+            selectedColumns={bill2SelectedColumns}
+            onToggleColumn={toggleBill2Column}
           />
         )}
         {formatType === "BILL3" && (
@@ -1619,6 +1684,8 @@ export function BillForm(props: Props) {
             remove={removeWithFile}
             onPickFile={(i,f)=> setRowFileAt(i,f)}
             files={rowFiles.map((r)=> r?.[0] ?? null)}
+            showBankName={bill23BankEnabled}
+            onToggleBank={toggleBill23Bank}
           />
         )}
         {formatType === "BILL5" && (
@@ -1798,7 +1865,10 @@ function ViewBill1({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
 
 function ViewBill2({ b, fallbackDesignation }: { b: BillViewData; fallbackDesignation?: string }) {
   const rows = b.items.map((it)=>({ ...decB2(it.purpose), dateFrom:safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date) }));
-  const total = rows.reduce((acc,r)=> acc + ((Number(r.local)||0)+(Number(r.trip)||0)+(Number(r.others)||0) - (Number(r.advance)||0)), 0);
+  const selectedColumns = rows.every((row) => row.selectedColumns === undefined)
+    ? (["trip", "others", "advance"] as Bill2OptionalColumn[])
+    : BILL2_OPTIONAL_COLUMNS.map((column) => column.key).filter((key) => rows.some((row) => row.selectedColumns?.includes(key)));
+  const total = rows.reduce((acc,r)=> acc + ((Number(r.local)||0)+(Number(r.trip)||0)+(Number(r.food)||0)+(Number(r.hotel)||0)+(Number(r.others)||0) - (Number(r.advance)||0)), 0);
   return (
     <div className="rounded-xl border bg-white p-6 shadow-sm">
       <HeaderInfo b={b} fallbackDesignation={fallbackDesignation} />
@@ -1811,11 +1881,10 @@ function ViewBill2({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
               <TableHead className="min-w-[140px] text-sm font-semibold">To</TableHead>
               <TableHead className="text-sm font-semibold">Date From</TableHead>
               <TableHead className="text-sm font-semibold">Date To</TableHead>
+              {selectedColumns.includes("bankName") ? <TableHead className="min-w-[180px] text-sm font-semibold">Bank Name</TableHead> : null}
               <TableHead className="min-w-[220px] text-sm font-semibold">Purpose</TableHead>
               <TableHead className="text-right text-sm font-semibold">Local Conv.</TableHead>
-              <TableHead className="text-right text-sm font-semibold">Trip Conv.</TableHead>
-              <TableHead className="text-right text-sm font-semibold">Others</TableHead>
-              <TableHead className="text-right text-sm font-semibold">Advance</TableHead>
+              {BILL2_OPTIONAL_COLUMNS.filter((column) => column.key !== "bankName" && selectedColumns.includes(column.key)).map((column) => <TableHead key={column.key} className="text-right text-sm font-semibold">{column.label}</TableHead>)}
               <TableHead className="text-right text-sm font-semibold">Total</TableHead>
               <TableHead className="text-right text-sm font-semibold">Net Payable</TableHead>
               <TableHead className="min-w-[180px] text-sm font-semibold">Remarks</TableHead>
@@ -1824,7 +1893,7 @@ function ViewBill2({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
           </TableHeader>
           <TableBody>
             {rows.map((r,i)=>{
-              const sum = (Number(r.local)||0)+(Number(r.trip)||0)+(Number(r.others)||0);
+              const sum = (Number(r.local)||0)+(Number(r.trip)||0)+(Number(r.food)||0)+(Number(r.hotel)||0)+(Number(r.others)||0);
               const net = sum - (Number(r.advance)||0);
               const url = b.items[i]?.attachmentUrl || null;
               return (
@@ -1834,11 +1903,10 @@ function ViewBill2({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
                   <TableCell className="p-3 min-w-[140px] text-sm">{r.to||"-"}</TableCell>
                   <TableCell className="p-3 text-sm">{format(r.dateFrom, "PPP")}</TableCell>
                   <TableCell className="p-3 text-sm">{format(r.dateTo, "PPP")}</TableCell>
+                  {selectedColumns.includes("bankName") ? <TableCell className="p-3 min-w-[180px] text-sm">{r.bankName || "-"}</TableCell> : null}
                   <TableCell className="p-3 min-w-[220px] text-sm">{r.purpose}</TableCell>
                   <TableCell className="p-3 text-right text-sm">{Number(r.local).toFixed(2)}</TableCell>
-                  <TableCell className="p-3 text-right text-sm">{Number(r.trip).toFixed(2)}</TableCell>
-                  <TableCell className="p-3 text-right text-sm">{Number(r.others).toFixed(2)}</TableCell>
-                  <TableCell className="p-3 text-right text-sm">{Number(r.advance).toFixed(2)}</TableCell>
+                  {selectedColumns.filter((column) => column !== "bankName").map((column) => <TableCell key={column} className="p-3 text-right text-sm">{Number(r[column] || 0).toFixed(2)}</TableCell>)}
                   <TableCell className="p-3 text-right text-sm">{sum.toFixed(2)}</TableCell>
                   <TableCell className="p-3 text-right text-sm">{net.toFixed(2)}</TableCell>
                   <TableCell className="p-3 min-w-[180px] text-sm">{r.remarks||"-"}</TableCell>
@@ -1849,7 +1917,7 @@ function ViewBill2({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
               );
             })}
             <TableRow className="font-semibold bg-muted/30">
-              <TableCell colSpan={12} className="text-right p-3 text-sm">Total Tk</TableCell>
+              <TableCell colSpan={12 + selectedColumns.length} className="text-right p-3 text-sm">Total Tk</TableCell>
               <TableCell className="text-right p-3 text-sm font-bold">{total.toFixed(2)}</TableCell>
             </TableRow>
           </TableBody>
@@ -1863,6 +1931,7 @@ function ViewBill2({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
 
 function ViewBill3({ b, fallbackDesignation }: { b: BillViewData; fallbackDesignation?: string }) {
   const rows = b.items.map((it)=>({ ...decB3(it.purpose), dateFrom:safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date) }));
+  const showBankName = rows.some((row) => row.showBankName);
   const total = rows.reduce((acc,r)=> acc + ((Number(r.food)||0)+(Number(r.hotel)||0)+(Number(r.others)||0) - (Number(r.advance)||0)), 0);
   return (
     <div className="rounded-xl border bg-white p-6 shadow-sm">
@@ -1876,6 +1945,7 @@ function ViewBill3({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
               <TableHead className="min-w-[140px] text-sm font-semibold">To</TableHead>
               <TableHead className="text-sm font-semibold">Date From</TableHead>
               <TableHead className="text-sm font-semibold">Date To</TableHead>
+              {showBankName ? <TableHead className="min-w-[180px] text-sm font-semibold">Bank Name</TableHead> : null}
               <TableHead className="min-w-[220px] text-sm font-semibold">Purpose</TableHead>
               <TableHead className="text-right text-sm font-semibold">Food</TableHead>
               <TableHead className="text-right text-sm font-semibold">Hotel</TableHead>
@@ -1899,6 +1969,7 @@ function ViewBill3({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
                   <TableCell className="p-3 min-w-[140px] text-sm">{r.to||"-"}</TableCell>
                   <TableCell className="p-3 text-sm">{format(r.dateFrom, "PPP")}</TableCell>
                   <TableCell className="p-3 text-sm">{format(r.dateTo, "PPP")}</TableCell>
+                  {showBankName ? <TableCell className="p-3 min-w-[180px] text-sm">{r.bankName || "-"}</TableCell> : null}
                   <TableCell className="p-3 min-w-[220px] text-sm">{r.purpose}</TableCell>
                   <TableCell className="p-3 text-right text-sm">{Number(r.food).toFixed(2)}</TableCell>
                   <TableCell className="p-3 text-right text-sm">{Number(r.hotel).toFixed(2)}</TableCell>
@@ -1915,7 +1986,7 @@ function ViewBill3({ b, fallbackDesignation }: { b: BillViewData; fallbackDesign
             })}
 
             <TableRow className="font-semibold bg-muted/30">
-              <TableCell colSpan={13} className="text-right p-3 text-sm">Total Tk</TableCell>
+              <TableCell colSpan={13 + (showBankName ? 1 : 0)} className="text-right p-3 text-sm">Total Tk</TableCell>
               <TableCell className="text-right p-3 text-sm font-bold">{total.toFixed(2)}</TableCell>
             </TableRow>
           </TableBody>
@@ -2130,29 +2201,36 @@ function EditorBill1({
 }
 
 function EditorBill2({
-  control, fields, append, remove, onPickFile, files,
+  control, fields, append, remove, onPickFile, files, selectedColumns, onToggleColumn,
 }: {
   control:any; fields:any[]; append:(r:RowB2)=>void; remove:(i:number)=>void;
   onPickFile:(i:number,f:File|null)=>void; files:(File|null)[];
+  selectedColumns:Bill2OptionalColumn[]; onToggleColumn:(column:Bill2OptionalColumn, checked:boolean)=>void;
 }) {
   const rows = useWatch({ control, name:"items" }) as RowB2[];
-  const sum = (rows||[]).reduce((acc,r)=> acc + ((Number(r.local)||0)+(Number(r.trip)||0)+(Number(r.others)||0) - (Number(r.advance)||0)), 0);
+  const sum = (rows||[]).reduce((acc,r)=> acc + ((Number(r.local)||0)+(Number(r.trip)||0)+(Number(r.food)||0)+(Number(r.hotel)||0)+(Number(r.others)||0) - (Number(r.advance)||0)), 0);
 
   return (
     <>
+      <div className="mb-3 flex flex-wrap gap-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3 shadow-sm">
+        {BILL2_OPTIONAL_COLUMNS.map((column) => {
+          const checked = selectedColumns.includes(column.key);
+          return <label key={column.key} className={cn("inline-flex cursor-pointer select-none items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium", checked ? "border-primary/40 bg-primary/5 text-primary" : "border-slate-300 bg-white")}><Checkbox checked={checked} onCheckedChange={(value) => onToggleColumn(column.key, value === true)} className="h-5 w-5 rounded-full border-slate-400" />{column.label}</label>;
+        })}
+      </div>
       <div className="rounded-lg border overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="text-sm font-semibold">No.</TableHead>
-              <TableHead className="min-w-[180px] text-sm font-semibold">Name</TableHead>
+              <TableHead className="min-w-[180px] text-sm font-semibold">From</TableHead>
+              <TableHead className="min-w-[180px] text-sm font-semibold">To</TableHead>
               <TableHead className="text-sm font-semibold">Date From</TableHead>
               <TableHead className="text-sm font-semibold">Date To</TableHead>
+              {selectedColumns.includes("bankName") ? <TableHead className="min-w-[240px] text-sm font-semibold">Bank Name</TableHead> : null}
               <TableHead className="min-w-[220px] text-sm font-semibold">Purpose</TableHead>
               <TableHead className="text-right text-sm font-semibold">Local Conv.</TableHead>
-              <TableHead className="text-right text-sm font-semibold">Trip Conv.</TableHead>
-              <TableHead className="text-right text-sm font-semibold">Others</TableHead>
-              <TableHead className="text-right text-sm font-semibold">Advance</TableHead>
+              {BILL2_OPTIONAL_COLUMNS.filter((column) => column.key !== "bankName" && selectedColumns.includes(column.key)).map((column) => <TableHead key={column.key} className="text-right text-sm font-semibold">{column.label}</TableHead>)}
               <TableHead className="text-right text-sm font-semibold">Total</TableHead>
               <TableHead className="text-right text-sm font-semibold">Net Payable</TableHead>
               <TableHead className="min-w-[180px] text-sm font-semibold">Remarks</TableHead>
@@ -2166,12 +2244,12 @@ function EditorBill2({
                 <TableCell className="p-1 pt-3 font-medium">{i+1}</TableCell>
                 <TableCell className="p-1 min-w-[140px]">
                   <FormField control={control} name={`items.${i}.from`} render={({ field })=>(
-                    <FormItem><FormControl><Input placeholder="From" {...field} required className="w-[180px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input placeholder="From" {...field} className="w-[180px]" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
                 <TableCell className="p-1 min-w-[140px]">
                   <FormField control={control} name={`items.${i}.to`} render={({ field })=>(
-                    <FormItem><FormControl><Input placeholder="To" {...field} required className="w-[180px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input placeholder="To" {...field} className="w-[180px]" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
                 {(["dateFrom","dateTo"] as const).map((k)=>(
@@ -2196,12 +2274,19 @@ function EditorBill2({
                     )}/>
                   </TableCell>
                 ))}
+                {selectedColumns.includes("bankName") ? (
+                  <TableCell className="p-1 min-w-[240px]">
+                    <FormField control={control} name={`items.${i}.bankName`} render={({ field }) => (
+                      <FormItem><Select value={field.value || ""} onValueChange={field.onChange}><FormControl><SelectTrigger className="w-[240px]"><SelectValue placeholder="Select bank" /></SelectTrigger></FormControl><SelectContent>{BILL5_BANKS.map((bank) => <SelectItem key={bank} value={bank}>{bank}</SelectItem>)}</SelectContent></Select><FormMessage/></FormItem>
+                    )} />
+                  </TableCell>
+                ) : null}
                 <TableCell className="p-1 min-w-[220px]">
                   <FormField control={control} name={`items.${i}.purpose`} render={({ field })=>(
                     <FormItem><FormControl><Input placeholder="Purpose" {...field} className="w-[280px]" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
-                {(["local","trip","others","advance"] as const).map((k)=>(
+                {(["local", ...selectedColumns.filter((column) => column !== "bankName")] as Array<"local" | Exclude<Bill2OptionalColumn, "bankName">>).map((k)=>(
                   <TableCell className="p-1" key={k}>
                     <FormField control={control} name={`items.${i}.${k}`} render={({ field })=>(
                       <FormItem><FormControl>
@@ -2209,7 +2294,6 @@ function EditorBill2({
                           type="number"
                           step="0.01"
                           className="no-spinner text-right w-[130px]"
-                          required
                           value={field.value ?? ""}
                           onChange={(e)=> field.onChange(e.target.value==="" ? undefined : Number(e.target.value))}
                         />
@@ -2221,7 +2305,7 @@ function EditorBill2({
                 <TableCell className="p-1 text-right">
                   {(() => {
                     const r = (rows||[])[i];
-                    const s = (Number(r?.local)||0)+(Number(r?.trip)||0)+(Number(r?.others)||0);
+                    const s = (Number(r?.local)||0)+(Number(r?.trip)||0)+(Number(r?.food)||0)+(Number(r?.hotel)||0)+(Number(r?.others)||0);
                     return s.toFixed(2);
                   })()}
                 </TableCell>
@@ -2229,7 +2313,7 @@ function EditorBill2({
                 <TableCell className="p-3 text-right text-sm">
                   {(() => {
                     const r = (rows||[])[i];
-                    const s = (Number(r?.local)||0)+(Number(r?.trip)||0)+(Number(r?.others)||0);
+                    const s = (Number(r?.local)||0)+(Number(r?.trip)||0)+(Number(r?.food)||0)+(Number(r?.hotel)||0)+(Number(r?.others)||0);
                     const n = s - (Number(r?.advance)||0);
                     return n.toFixed(2);
                   })()}
@@ -2260,7 +2344,7 @@ function EditorBill2({
               </TableRow>
             ))}
             <TableRow className="font-semibold bg-muted/30">
-              <TableCell colSpan={14} className="text-right p-3 text-sm">Total Tk</TableCell>
+              <TableCell colSpan={11 + selectedColumns.length} className="text-right p-3 text-sm">Total Tk</TableCell>
               <TableCell className="text-right p-3 text-sm font-bold">{sum.toFixed(2)}</TableCell>
             </TableRow>
           </TableBody>
@@ -2270,7 +2354,7 @@ function EditorBill2({
       <Button
         type="button"
         variant="outline"
-        onClick={()=> append({ from:"", to:"", dateFrom:new Date(), dateTo:new Date(), purpose:"", local:undefined as any, trip:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" })}
+        onClick={()=> append({ from:"", to:"", dateFrom:new Date(), dateTo:new Date(), purpose:"", local:undefined as any, trip:undefined as any, food:undefined as any, hotel:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" })}
       >
         <PlusCircle className="mr-2 h-4 w-4" /> Add Row
       </Button>
@@ -2279,16 +2363,18 @@ function EditorBill2({
 }
 
 function EditorBill3({
-  control, fields, append, remove, onPickFile, files,
+  control, fields, append, remove, onPickFile, files, showBankName, onToggleBank,
 }: {
   control:any; fields:any[]; append:(r:RowB3)=>void; remove:(i:number)=>void;
   onPickFile:(i:number,f:File|null)=>void; files:(File|null)[];
+  showBankName:boolean; onToggleBank:(checked:boolean)=>void;
 }) {
   const rows = useWatch({ control, name:"items" }) as RowB3[];
   const sum = (rows||[]).reduce((acc,r)=> acc + ((Number(r.food)||0)+(Number(r.hotel)||0)+(Number(r.others)||0) - (Number(r.advance)||0)), 0);
 
   return (
     <>
+      <BankColumnToggle checked={showBankName} onChange={onToggleBank} />
       <div className="rounded-lg border overflow-x-auto">
         <Table>
           <TableHeader>
@@ -2298,6 +2384,7 @@ function EditorBill3({
               <TableHead className="min-w-[140px]">To</TableHead>
               <TableHead>Date From</TableHead>
               <TableHead>Date To</TableHead>
+              {showBankName ? <TableHead className="min-w-[240px]">Bank Name</TableHead> : null}
               <TableHead className="min-w-[220px]">Purpose</TableHead>
               <TableHead className="text-right">Food</TableHead>
               <TableHead className="text-right">Hotel</TableHead>
@@ -2316,12 +2403,12 @@ function EditorBill3({
                 <TableCell className="p-1 pt-3 font-medium">{i+1}</TableCell>
                 <TableCell className="p-1 min-w-[140px]">
                   <FormField control={control} name={`items.${i}.from`} render={({ field })=>(
-                    <FormItem><FormControl><Input placeholder="From" {...field} required className="w-[180px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input placeholder="From" {...field} className="w-[180px]" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
                 <TableCell className="p-1 min-w-[140px]">
                   <FormField control={control} name={`items.${i}.to`} render={({ field })=>(
-                    <FormItem><FormControl><Input placeholder="To" {...field} required className="w-[180px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input placeholder="To" {...field} className="w-[180px]" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
                 {(["dateFrom","dateTo"] as const).map((k)=>(
@@ -2346,6 +2433,13 @@ function EditorBill3({
                     )}/>
                   </TableCell>
                 ))}
+                {showBankName ? (
+                  <TableCell className="p-1 min-w-[240px]">
+                    <FormField control={control} name={`items.${i}.bankName`} render={({ field }) => (
+                      <FormItem><Select value={field.value || ""} onValueChange={field.onChange}><FormControl><SelectTrigger className="w-[240px]"><SelectValue placeholder="Select bank" /></SelectTrigger></FormControl><SelectContent>{BILL5_BANKS.map((bank) => <SelectItem key={bank} value={bank}>{bank}</SelectItem>)}</SelectContent></Select><FormMessage/></FormItem>
+                    )} />
+                  </TableCell>
+                ) : null}
                 <TableCell className="p-1 min-w-[220px]">
                   <FormField control={control} name={`items.${i}.purpose`} render={({ field })=>(
                     <FormItem><FormControl><Input placeholder="Purpose" {...field} className="w-[280px]" /></FormControl><FormMessage/></FormItem>
@@ -2360,7 +2454,6 @@ function EditorBill3({
                           type="number"
                           step="0.01"
                           className="no-spinner text-right w-[130px]"
-                          required
                           value={field.value ?? ""}
                           onChange={(e)=> field.onChange(e.target.value==="" ? undefined : Number(e.target.value))}
                         />
@@ -2411,7 +2504,7 @@ function EditorBill3({
             ))}
 
             <TableRow className="font-semibold bg-muted/30">
-              <TableCell colSpan={13} className="text-right p-3 text-sm">Total Tk</TableCell>
+              <TableCell colSpan={13 + (showBankName ? 1 : 0)} className="text-right p-3 text-sm">Total Tk</TableCell>
               <TableCell className="text-right p-3 text-sm font-bold">{sum.toFixed(2)}</TableCell>
             </TableRow>
           </TableBody>
