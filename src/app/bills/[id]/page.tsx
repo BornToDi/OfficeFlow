@@ -12,6 +12,12 @@ import type { BillViewData } from "@/components/bills/bill-form";
 import { RequestReceiptButton } from "@/components/bills/RequestReceiptButton";
 import { ConfirmReceiveButton } from "@/components/bills/ConfirmReceiveButton";
 import { Button } from "@/components/ui/button";
+import {
+  cleanBillHistoryComment,
+  employeeSubmittedAmount,
+  isAccountsApproved,
+  parseSupervisorEditChanges,
+} from "@/lib/bill-visibility";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -51,6 +57,12 @@ export default async function BillDetail({
   const dbBill = await getBillById(id);
   if (!dbBill) return <div className="p-6 text-sm">Bill not found.</div>;
 
+  const role = String(session.user.role);
+  const showEmployeeSubmittedAmount = role === "employee" && !isAccountsApproved(dbBill.status);
+  const visibleAmount = showEmployeeSubmittedAmount
+    ? employeeSubmittedAmount(dbBill.history, Number(dbBill.amount))
+    : Number(dbBill.amount);
+
   const viewData: BillViewData = {
     id: dbBill.id,
     companyName: dbBill.companyName,
@@ -60,8 +72,8 @@ export default async function BillDetail({
       employeeDesignation: dbBill.employee?.designation ?? "",
       employeeDepartment: dbBill.employee?.department ?? "",
       employeeCode: dbBill.employee?.employeeCode ?? "",
-    amount: Number(dbBill.amount),
-    amountInWords: dbBill.amountInWords,
+    amount: visibleAmount,
+    amountInWords: showEmployeeSubmittedAmount ? "" : dbBill.amountInWords,
     status: dbBill.status,
     items: dbBill.items.map((it) => ({
       id: it.id,
@@ -75,8 +87,8 @@ export default async function BillDetail({
     })),
   };
 
-  const role = String(session.user.role);
-  if (role === "supervisor" && dbBill.items.some((item) => item.transport === "__BILL5__")) {
+  const isBill5 = dbBill.items.some((item) => item.transport === "__BILL5__");
+  if (role === "supervisor" && isBill5) {
     const incidents = dbBill.items.flatMap((item) => {
       if (item.transport !== "__BILL5__") return [];
       try {
@@ -135,6 +147,7 @@ export default async function BillDetail({
 
   // supervisors for forwarding dropdown
   const supervisors = await listSupervisors();
+  const otherSupervisors = supervisors.filter((supervisor) => supervisor.id !== session.user.id);
 
   const hasPaymentRequest = dbBill.history.some((h) =>
     (h.comment ?? "").toLowerCase().includes("payment requested from employee")
@@ -210,10 +223,38 @@ async function approveOrForward(formData: FormData) {
   
   
   const targetSupervisor = supervisors.find((s: any) => s.id === currentSupervisorId) || null;
+  const wasEditedBySupervisor = dbBill.history.some(
+    (entry) =>
+      entry.actor?.role === "supervisor" &&
+      entry.comment?.toLowerCase().includes("edited by supervisor before approval")
+  );
+  const supervisorEditEvents = dbBill.history
+    .filter(
+      (entry) =>
+        entry.actor?.role === "supervisor" &&
+        entry.comment?.toLowerCase().includes("edited by supervisor before approval")
+    )
+    .map((entry) => ({
+      editor: entry.actor?.name || "Supervisor",
+      timestamp: entry.timestamp,
+      changes: parseSupervisorEditChanges(entry.comment),
+    }));
+  const supervisorChanges = supervisorEditEvents
+    .flatMap((edit) => edit.changes)
+    .filter(
+      (change) =>
+        change.field !== "Total amount" && !/^Row \d+ amount$/i.test(change.field)
+    );
+  const visibleHistory = isBill5
+    ? dbBill.history.filter(
+        (entry) =>
+          !entry.comment?.toLowerCase().includes("edited by supervisor before approval")
+      )
+    : dbBill.history;
 
   return (
-    <div className="p-6 space-y-6">
-      <header className="flex items-start justify-between">
+    <div className="min-w-0 max-w-full space-y-6 overflow-x-hidden p-1 sm:p-2">
+      <header className="flex flex-col items-start justify-between gap-3 sm:flex-row">
         <div>
           <h1 className="text-xl font-semibold">{viewData.companyName}</h1>
 
@@ -269,8 +310,32 @@ async function approveOrForward(formData: FormData) {
         )}
       </header>
 
+      {role === "supervisor" && wasEditedBySupervisor && (
+        <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-red-800">
+          <p className="text-sm font-semibold">Edited values</p>
+          {supervisorChanges.length ? (
+            <div className="mt-2 space-y-1">
+              {supervisorChanges.map((change, index) => (
+                <p key={`${change.field}-${index}`} className="text-xs font-medium">
+                  {change.field}: <span className="line-through opacity-70">{change.before}</span>
+                  <span className="px-1.5">→</span>
+                  <span className="font-semibold">{change.after}</span>
+                </p>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-1 text-xs">This bill was edited by a supervisor.</p>
+          )}
+        </div>
+      )}
+
       {showEdit ? (
-        <BillForm mode="edit" user={simpleUser!} bill={viewData} />
+        <BillForm
+          mode="edit"
+          user={simpleUser!}
+          bill={viewData}
+          supervisors={otherSupervisors}
+        />
       ) : (
         <BillForm mode="view" bill={viewData} user={session.user as any} />
       )}
@@ -284,7 +349,7 @@ async function approveOrForward(formData: FormData) {
   <label className="text-sm">Forward to:</label>
   <select name="nextSupervisorId" className="rounded border px-2 py-1">
     <option value="">Default — send to Accounts</option>
-    {supervisors.map((s) => (
+    {otherSupervisors.map((s) => (
       <option key={s.id} value={s.id}>
         {s.name}{s.email ? ` (${s.email})` : ""}
       </option>
@@ -385,12 +450,14 @@ async function approveOrForward(formData: FormData) {
       <section>
         <h2 className="mb-2 text-sm font-semibold">History</h2>
         <ol className="relative border-s pl-6">
-          {dbBill.history.map((h) => (
+          {visibleHistory.map((h) => {
+            const visibleComment = cleanBillHistoryComment(h.comment);
+            return (
             <li key={h.id} className="mb-4 ms-4">
               <span className="absolute -start-1.5 mt-1 h-3 w-3 rounded-full bg-primary" />
               <div className="text-sm">
                 <div className="font-medium">{h.status}</div>
-                {h.comment && <div className="text-muted-foreground">{h.comment}</div>}
+                {visibleComment && <div className="text-muted-foreground">{visibleComment}</div>}
                 <div className="text-xs text-muted-foreground">
                   {new Date(h.timestamp).toLocaleString()}
                   {h.actor && (
@@ -402,7 +469,8 @@ async function approveOrForward(formData: FormData) {
                 </div>
               </div>
             </li>
-          ))}
+            );
+          })}
         </ol>
       </section>
     </div>

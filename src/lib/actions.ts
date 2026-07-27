@@ -393,6 +393,11 @@ import {
 import { updateUserPassword } from "./repo";
 
 import type { Role, BillStatus } from "./types";
+import {
+  buildSupervisorEditChanges,
+  employeeAmountMarker,
+  supervisorEditDiffMarker,
+} from "./bill-visibility";
 import { prisma } from "./db";
 
 // -------- password hashing via Node crypto.scrypt (no external deps)
@@ -773,6 +778,14 @@ export async function saveDraft(
         session.user.role === "supervisor" &&
         existingBill?.status === "SUBMITTED" &&
         ((existingBill.supervisorId ?? existingBill.employee?.supervisorId ?? null) === session.user.id);
+      const originalAmountSnapshot =
+        canPreserveSubmittedStatus &&
+        !existingBill?.history.some((entry) => entry.comment?.includes("[EMPLOYEE_VISIBLE_AMOUNT:"))
+          ? ` ${employeeAmountMarker(Number(existingBill.amount))}`
+          : "";
+      const editDiff = canPreserveSubmittedStatus
+        ? ` ${supervisorEditDiffMarker(buildSupervisorEditChanges(existingBill, parsed))}`
+        : "";
 
       // inside saveDraft (when parsed.existingBillId is true)
     await updateBillDraft(parsed.existingBillId, {
@@ -783,7 +796,9 @@ export async function saveDraft(
       // send items ONLY if there are rows; otherwise omit to preserve DB rows
       items: parsed.items && parsed.items.length ? parsed.items : undefined,
       actorId: session.user.id,
-      comment: canPreserveSubmittedStatus ? "Edited by supervisor before approval" : "Draft updated by user",
+      comment: canPreserveSubmittedStatus
+        ? `Edited by supervisor before approval${originalAmountSnapshot}${editDiff}`
+        : "Draft updated by user",
       preserveStatus: canPreserveSubmittedStatus,
     });
 
@@ -844,6 +859,14 @@ if (parsed.existingBillId) {
     session.user.role === "supervisor" &&
     existingBill?.status === "SUBMITTED" &&
     ((existingBill.supervisorId ?? existingBill.employee?.supervisorId ?? null) === session.user.id);
+  const originalAmountSnapshot =
+    canPreserveSubmittedStatus &&
+    !existingBill?.history.some((entry) => entry.comment?.includes("[EMPLOYEE_VISIBLE_AMOUNT:"))
+      ? ` ${employeeAmountMarker(Number(existingBill.amount))}`
+      : "";
+  const editDiff = canPreserveSubmittedStatus
+    ? ` ${supervisorEditDiffMarker(buildSupervisorEditChanges(existingBill, parsed))}`
+    : "";
 
   // Duplicate check removed per user request
 
@@ -856,13 +879,19 @@ if (parsed.existingBillId) {
     items: parsed.items, // server keeps attachments already stored
     actorId: session.user.id,
     comment: canPreserveSubmittedStatus
-      ? "Edited by supervisor before approval"
+      ? `Edited by supervisor before approval${originalAmountSnapshot}${editDiff}`
       : "Finalized draft before submit",
     preserveStatus: canPreserveSubmittedStatus,
   });
 
   if (!canPreserveSubmittedStatus) {
-    await submitDraft(parsed.existingBillId, session.user.id);
+    await submitDraft(
+      parsed.existingBillId,
+      session.user.id,
+      session.user.role === "employee"
+        ? `Submitted by employee ${employeeAmountMarker(parsed.totalAmount)}`
+        : undefined
+    );
   }
 
   // If a supervisor submits, either forward to selected supervisor or auto-approve when allowed

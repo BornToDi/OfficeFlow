@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 
-interface SupervisorChangeRequest {
+export interface SupervisorChangeRequest {
   id: string;
   employee: {
     id: string;

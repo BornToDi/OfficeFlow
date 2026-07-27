@@ -1,13 +1,19 @@
 // src/app/dashboard/page.tsx
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/actions";
-import { listAllBills, listAllUsers } from "@/lib/repo";
+import {
+  getPendingSupervisorChangeRequests,
+  listAllBills,
+  listAllUsers,
+} from "@/lib/repo";
 import { toPlainBill, toPlainUser } from "@/lib/serializers";
 
 import { EmployeeDashboard } from "@/components/dashboard/employee-dashboard";
 import { SupervisorDashboard } from "@/components/dashboard/supervisor-dashboard";
 import { AccountsDashboard } from "@/components/dashboard/accounts-dashboard";
 import { ManagementDashboard } from "@/components/dashboard/management-dashboard";
+import type { SupervisorChangeRequest } from "@/components/supervisor/PendingSupervisorChangeRequests";
+import { employeeSubmittedAmount, isAccountsApproved } from "@/lib/bill-visibility";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -17,12 +23,40 @@ export default async function DashboardPage() {
   if (!session) redirect("/");
 
   // Fetch from DB
-  const [rawBills, rawUsers] = await Promise.all([listAllBills(), listAllUsers()]);
+  const [rawBills, rawUsers, rawSupervisorChangeRequests] = await Promise.all([
+    listAllBills(),
+    listAllUsers(),
+    session.user.role === "supervisor"
+      ? getPendingSupervisorChangeRequests(session.user.id)
+      : Promise.resolve([]),
+  ]);
 
   // 🔧 Convert Prisma types -> plain JSON-friendly objects
-  const bills = rawBills.map(toPlainBill);
+  const plainBills = rawBills.map(toPlainBill);
   const users = rawUsers.map(toPlainUser);
   const user = toPlainUser(session.user);
+  const bills =
+    user.role === "employee"
+      ? plainBills.map((bill) =>
+          isAccountsApproved(bill.status)
+            ? bill
+            : {
+                ...bill,
+                amount: employeeSubmittedAmount(bill.history, Number(bill.amount)),
+              }
+        )
+      : plainBills;
+  const supervisorChangeRequests: SupervisorChangeRequest[] = rawSupervisorChangeRequests
+    .filter((request): request is NonNullable<typeof request> => request !== null)
+    .filter((request) => request.employee !== null && request.newSupervisor !== null)
+    .map((request) => ({
+      id: request.id,
+      employee: request.employee!,
+      currentSupervisor: request.currentSupervisor,
+      newSupervisor: request.newSupervisor!,
+      status: request.status,
+      createdAt: new Date(request.createdAt).toISOString(),
+    }));
 
   switch (user.role) {
     case "employee":
@@ -34,7 +68,12 @@ export default async function DashboardPage() {
     case "supervisor":
       return (
         <div className="container mx-auto">
-          <SupervisorDashboard user={user} bills={bills} users={users} />
+          <SupervisorDashboard
+            user={user}
+            bills={bills}
+            users={users}
+            supervisorChangeRequests={supervisorChangeRequests}
+          />
         </div>
       );
     case "accounts":

@@ -1,6 +1,7 @@
 // src/lib/repo.ts
 import { prisma } from "./prisma"; // ensure this file exports your Prisma client
 import type { Role, BillStatus } from "./types";
+import { employeeAmountMarker } from "./bill-visibility";
 import crypto from "node:crypto";
 
 // ---- DUPLICATE TRIP GUARD ----
@@ -375,12 +376,15 @@ export async function createSupervisorChangeRequest(
   }
 
   const insertedId = crypto.randomUUID();
+  const now = new Date();
   await prisma.$executeRawUnsafe(
-    "INSERT INTO `SupervisorChangeRequest` (id, employeeId, currentSupervisorId, newSupervisorId, status, createdAt, updatedAt) VALUES (?, ?, ?, ?, 'PENDING', NOW(), NOW())",
+    "INSERT INTO `SupervisorChangeRequest` (id, employeeId, currentSupervisorId, newSupervisorId, status, createdAt, updatedAt) VALUES (?, ?, ?, ?, 'PENDING', ?, ?)",
     insertedId,
     employeeId,
     employee.supervisorId,
-    newSupervisorId
+    newSupervisorId,
+    now,
+    now
   );
 
   const createdRows = await prisma.$queryRawUnsafe<any[]>(
@@ -416,9 +420,12 @@ export async function approveSupervisorChangeRequest(
     throw new Error("Unauthorized: you are not the current supervisor");
   }
 
+  const now = new Date();
   await prisma.$executeRawUnsafe(
-    "UPDATE `SupervisorChangeRequest` SET status = 'APPROVED', approvedAt = NOW(), approvedById = ?, updatedAt = NOW() WHERE id = ?",
+    "UPDATE `SupervisorChangeRequest` SET status = 'APPROVED', approvedAt = ?, approvedById = ?, updatedAt = ? WHERE id = ?",
+    now,
     supervisorId,
+    now,
     requestId
   );
 
@@ -452,10 +459,13 @@ export async function rejectSupervisorChangeRequest(
     throw new Error("Unauthorized: you are not the current supervisor");
   }
 
+  const now = new Date();
   await prisma.$executeRawUnsafe(
-    "UPDATE `SupervisorChangeRequest` SET status = 'REJECTED', approvedAt = NOW(), approvedById = ?, reason = ?, updatedAt = NOW() WHERE id = ?",
+    "UPDATE `SupervisorChangeRequest` SET status = 'REJECTED', approvedAt = ?, approvedById = ?, reason = ?, updatedAt = ? WHERE id = ?",
+    now,
     supervisorId,
     reason || null,
+    now,
     requestId
   );
 
@@ -544,7 +554,7 @@ export async function createBill(
   } else {
     historyCreates.push({
       status: "SUBMITTED",
-      comment: "Submitted by employee",
+      comment: `Submitted by employee ${employeeAmountMarker(input.amount)}`,
       actorId: submittedById ?? null,
     });
   }

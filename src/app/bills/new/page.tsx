@@ -17,7 +17,9 @@ export default async function NewBillPage() {
   let supervisors: Awaited<ReturnType<typeof listSupervisors>> = [];
   if (user.role === "supervisor") {
     try {
-      supervisors = await listSupervisors();
+      supervisors = (await listSupervisors()).filter(
+        (supervisor) => supervisor.id !== user.id
+      );
     } catch (error) {
       console.error("Failed to load supervisors for new bill page:", error);
       supervisors = [];

@@ -124,7 +124,7 @@ export default async function BillsLayout({
         </Sidebar>
         <SidebarInset>
             <DashboardHeader />
-            <main className="flex-1 p-4 md:p-8 bg-white">{children}</main>
+            <main className="min-w-0 flex-1 overflow-x-hidden bg-white p-3 sm:p-4 md:p-8">{children}</main>
         </SidebarInset>
     </SidebarProvider>
   );

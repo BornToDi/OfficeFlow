@@ -431,8 +431,8 @@ function Bill5ChildTable({
   const { fields: childFields, append: appendChild, remove: removeChild } = useFieldArray({ control, name: `items.${parentIndex}.children` as any });
 
   return (
-    <div className="w-full">
-      <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
+    <div className="min-w-0 w-full max-w-full">
+      <div className="w-full max-w-full overflow-x-auto rounded-md border border-slate-200 bg-white">
         <Table>
           <TableHeader className="bg-slate-50/90">
             <TableRow className="border-slate-200 hover:bg-transparent">
@@ -596,7 +596,7 @@ function EditorBill5({
   onToggleColumn: (column: Bill5OptionalColumn, enabled: boolean) => void;
 }) {
   return (
-    <div className="w-full max-w-full overflow-hidden">
+    <div className="min-w-0 w-full max-w-full overflow-hidden">
       <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50/70 p-4 shadow-sm">
         <div className="mb-3 flex items-center gap-2">
           <span className="text-sm font-semibold text-slate-800">Add columns</span>
@@ -786,6 +786,13 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
   const [mounted, setMounted] = useState(false);
   const isEmployeeView = viewerRole === "employee";
   const isDraft = String(b.status).toUpperCase() === "DRAFT";
+  const status = String(b.status).toUpperCase();
+  const isAccountsApproved = [
+    "APPROVED_BY_ACCOUNTS",
+    "APPROVED_BY_MANAGEMENT",
+    "REJECTED_BY_MANAGEMENT",
+    "PAID",
+  ].includes(status);
   const incidentWarningFor = (incident: string) =>
     viewerRole === "supervisor"
       ? b.incidentWarnings?.[incident.trim().replace(/\s+/g, " ").toLowerCase()]
@@ -803,7 +810,9 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
     return (
       <div className="rounded-xl border bg-white p-6 shadow-sm">
         <div className="rounded-lg border bg-muted/20 p-8 text-center">
-          <p className="text-sm text-muted-foreground">Submitted Bill Amount</p>
+          <p className="text-sm text-muted-foreground">
+            {isAccountsApproved ? "Approved Bill Amount" : "Your Submitted Bill Amount"}
+          </p>
           <p className="mt-2 text-4xl font-semibold tabular-nums">
             {new Intl.NumberFormat("en-IN", { style: "currency", currency: "BDT" }).format(Number(b.amount || 0))}
           </p>
@@ -1597,7 +1606,7 @@ export function BillForm(props: Props) {
       <form
         onSubmit={handleSubmit(onSubmitFinal)}
         autoComplete="off"
-        className="w-full max-w-none mx-auto space-y-6 rounded-xl border bg-white p-6 md:p-8 shadow-sm"
+        className="mx-auto min-w-0 w-full max-w-full space-y-6 overflow-hidden rounded-xl border bg-white p-3 shadow-sm sm:p-5 md:p-8"
       >
         {/* Hidden bill id if editing */}
         <FormField control={control} name="billId" render={({ field }) => <input type="hidden" name={field.name} value={field.value ?? ""} onChange={field.onChange} onBlur={field.onBlur} ref={field.ref} />} />

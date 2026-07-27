@@ -5,14 +5,23 @@ import type { Bill, User } from "@/lib/types";
 import { BillsTable } from "../bills/bills-table";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
+import PendingSupervisorChangeRequests, {
+  type SupervisorChangeRequest,
+} from "../supervisor/PendingSupervisorChangeRequests";
 
 interface SupervisorDashboardProps {
   user: User;
   bills: Bill[];
   users: User[];
+  supervisorChangeRequests: SupervisorChangeRequest[];
 }
 
-export function SupervisorDashboard({ user, bills, users }: SupervisorDashboardProps) {
+export function SupervisorDashboard({
+  user,
+  bills,
+  users,
+  supervisorChangeRequests,
+}: SupervisorDashboardProps) {
   const [billScope, setBillScope] = useState<"all" | "mine">("all");
   const teamMemberIds = users
     .filter((u) => String(u.supervisorId) === String(user.id))
@@ -40,10 +49,17 @@ export function SupervisorDashboard({ user, bills, users }: SupervisorDashboardP
   );
   const filteredTeamBills = useMemo(() => {
     if (billScope === "mine") {
-      return teamAndOwnBills.filter((bill) => String(bill.employeeId) === String(user.id));
+      return bills.filter(
+        (bill) =>
+          String(bill.employeeId) === String(user.id) ||
+          (bill.history ?? []).some(
+            (entry) =>
+              entry.status === "SUBMITTED" && String(entry.actorId) === String(user.id)
+          )
+      );
     }
     return teamAndOwnBills;
-  }, [billScope, teamAndOwnBills, user.id]);
+  }, [billScope, bills, teamAndOwnBills, user.id]);
   const recentTeamBills = filteredTeamBills.slice(0, 10);
 
   const pendingCount = pendingApprovalBills.length;
@@ -61,6 +77,8 @@ export function SupervisorDashboard({ user, bills, users }: SupervisorDashboardP
             Here&apos;s a summary of your team&apos;s conveyance bills.
         </p>
       </div>
+
+      <PendingSupervisorChangeRequests requests={supervisorChangeRequests} />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
