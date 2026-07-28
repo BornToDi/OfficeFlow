@@ -28,6 +28,23 @@ type Supervisor = {
   employeeCode?: string | null;
 };
 
+const DEPARTMENTS = [
+  "Software Department",
+  "Sales Department",
+  "Account Department",
+  "IT Department",
+  "ATM Department",
+  "POS Department",
+  "Power Department",
+  "AC Department",
+  "Surveillance (CC TV)",
+  "Civil Department",
+  "Logistic Department",
+  "Admin Department",
+  "Accounts Department",
+  "CareTaker",
+] as const;
+
 const schema = z
   .object({
     name: z.string().min(1, "Name is required"),
@@ -225,12 +242,22 @@ export function RegistrationForm({ supervisors }: { supervisors: Supervisor[] })
             {/* Department */}
             <div className="space-y-2">
               <Label htmlFor="department">Department</Label>
-              <Input
-                id="department"
-                placeholder="e.g. Engineering, Sales, HR"
+              <Select
+                value={form.watch("department") || ""}
+                onValueChange={(value) => form.setValue("department", value, { shouldValidate: true, shouldDirty: true })}
                 disabled={disabled}
-                {...form.register("department")}
-              />
+              >
+                <SelectTrigger id="department">
+                  <SelectValue placeholder="Select department" />
+                </SelectTrigger>
+                <SelectContent>
+                  {DEPARTMENTS.map((department) => (
+                    <SelectItem key={department} value={department}>
+                      {department}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {form.formState.errors.department && (
                 <p className="text-xs text-red-600">
                   {form.formState.errors.department.message}

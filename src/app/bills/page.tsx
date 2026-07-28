@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/actions";
 import { getBillsForRolePage } from "@/lib/repo";
 import { PaginationControls } from "@/components/pagination-controls";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -51,11 +52,12 @@ type PlainBill = {
 export default async function BillsPage({
   searchParams,
 }: {
-  searchParams?: { page?: string; _debugInfo?: string };
+  searchParams?: { page?: string; q?: string; _debugInfo?: string };
 }) {
   // await the proxy before reading properties
   const sp = await searchParams;
   const page = Number(sp?.page ?? "1") || 1;
+  const query = String(sp?.q ?? "").trim();
 
   // ensure session is available before using it
   const session = await getSession();
@@ -65,7 +67,8 @@ export default async function BillsPage({
   const { rows, totalPages, page: currentPage } = await getBillsForRolePage(
     { id: session.user.id, role: session.user.role },
     page,
-    10
+    10,
+    query
   );
 
   // Convert Prisma results to plain serializable objects
@@ -120,6 +123,25 @@ export default async function BillsPage({
 
   return (
     <div className="container mx-auto p-6">
+      {isSupervisor && (
+        <form method="GET" action="/bills" className="mb-4 flex max-w-xl flex-col gap-2 sm:flex-row">
+          <input
+            type="search"
+            name="q"
+            defaultValue={query}
+            placeholder="Search incident number or employee ID"
+            className="h-10 min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+          />
+          <button type="submit" className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+            Search team bills
+          </button>
+          {query && (
+            <Link href="/bills" className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium hover:bg-muted">
+              Clear
+            </Link>
+          )}
+        </form>
+      )}
       <BillsDriveView bills={bills} users={users} isSupervisor={isSupervisor} />
 
       {/* Pager */}

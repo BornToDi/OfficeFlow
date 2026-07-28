@@ -1161,7 +1161,8 @@ function roleWhere(user: { id: string; role: Role }) {
 export async function getBillsForRolePage(
   user: { id: string; role: Role },
   page = 1,
-  pageSize = 10
+  pageSize = 10,
+  search = ""
 ): Promise<PageResult<any>> {
   const safePage = Math.max(1, Number(page || 1));
   const take = Math.max(1, Number(pageSize || 10));
@@ -1185,6 +1186,25 @@ export async function getBillsForRolePage(
     where = { status: { in: ["APPROVED_BY_SUPERVISOR", "APPROVED_BY_MANAGEMENT"] } };
   } else if (user.role === "management") {
     where = { status: "APPROVED_BY_ACCOUNTS" };
+  }
+
+  const query = search.trim();
+  if (user.role === "supervisor" && query) {
+    const supervisorScope = where;
+    where = {
+      AND: [
+        supervisorScope,
+        {
+          OR: [
+            { employeeId: { contains: query } },
+            { employee: { employeeCode: { contains: query } } },
+            { employee: { email: { contains: query } } },
+            // Bill 5 incident numbers are packed into the item purpose JSON.
+            { items: { some: { purpose: { contains: query } } } },
+          ],
+        },
+      ],
+    };
   }
 
   const [total, rows] = await prisma.$transaction([

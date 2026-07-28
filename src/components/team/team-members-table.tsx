@@ -48,6 +48,32 @@ export function TeamMembersTable({ users, allUsers, currentUserRole }: TeamMembe
     }
   }
 
+  async function handleEditIdentifiers(user: User) {
+    const email = prompt("Employee email:", user.email);
+    if (email === null) return;
+
+    const employeeCode = prompt("Employee code:", user.employeeCode || "");
+    if (employeeCode === null) return;
+    if (!email.trim() || !employeeCode.trim()) {
+      alert("Email and employee code are required.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/users/update-identifiers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, email, employeeCode }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Update failed");
+      alert("Employee email and code updated successfully.");
+      location.reload();
+    } catch (error: any) {
+      alert(error?.message || "Failed to update employee.");
+    }
+  }
+
   return (
     <Card>
       <Table>
@@ -88,6 +114,9 @@ export function TeamMembersTable({ users, allUsers, currentUserRole }: TeamMembe
                   {(currentUserRole === "management" || currentUserRole === "followup") && (
                     <TableCell>
                       <div className="flex gap-2">
+                        {(user.role === "employee" || user.role === "supervisor") && (
+                          <button className="btn btn-sm rounded bg-blue-600 px-2 py-1 text-white" onClick={() => handleEditIdentifiers(user)}>Edit</button>
+                        )}
                         <button className="btn btn-sm rounded px-2 py-1 bg-red-600 text-white" onClick={() => handleDelete(user.id)}>Delete</button>
                         <button className="btn btn-sm rounded px-2 py-1 bg-yellow-500 text-black" onClick={() => handleResetPassword(user.id)}>Reset Password</button>
                       </div>

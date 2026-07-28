@@ -24,6 +24,10 @@ interface BillsTableProps {
   showDepartment?: boolean;
 }
 
+function shortBillId(id: string) {
+  return id.slice(-4).toUpperCase();
+}
+
 export function BillsTable({ bills, users, title, action, showDepartment = false }: BillsTableProps) {
   const userMap = new Map(users.map((user) => [user.id, user.name]));
   const userRoleMap = new Map(users.map((user) => [user.id, user.role]));
@@ -77,7 +81,12 @@ export function BillsTable({ bills, users, title, action, showDepartment = false
                 <TableRow key={bill.id}>
                   <TableCell className="font-medium">
                     {bill.companyName}
-                    <p className="text-xs text-muted-foreground">{bill.id}</p>
+                    <p
+                      className="font-mono text-xs text-muted-foreground"
+                      title={bill.id}
+                    >
+                      {shortBillId(bill.id)}
+                    </p>
                   </TableCell>
                   <TableCell>
                     {new Intl.NumberFormat("en-IN", {

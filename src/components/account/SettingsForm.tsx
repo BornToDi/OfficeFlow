@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
+import { UserRound } from "lucide-react";
 
 const schema = z.object({
   name: z.string().min(1, "Name is required."),
@@ -62,21 +63,26 @@ export default function SettingsForm({
   };
 
   return (
-    <div className="w-full">
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-2xl font-bold text-slate-900">Profile Settings</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Update your basic info. Employees can also set their supervisor.
-        </p>
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-start gap-3 px-5 py-5 sm:px-6">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+          <UserRound className="h-5 w-5" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Profile information</h2>
+          <p className="mt-0.5 text-sm text-slate-500">Update your personal and workplace details.</p>
+        </div>
+      </div>
 
-        <Separator className="my-5" />
+        <Separator />
 
         <form
           onSubmit={form.handleSubmit(onSubmit)}
-          className="space-y-5"
+          className="p-5 sm:p-6"
         >
+          <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
           <div className="grid gap-2">
-            <label className="text-sm font-semibold text-slate-700" htmlFor="name">Full Name</label>
+            <label className="text-sm font-medium text-slate-700" htmlFor="name">Full name</label>
             <Input id="name" placeholder="Your full name" {...form.register("name")} className="border-slate-300 focus-visible:ring-blue-400" />
             {form.formState.errors.name && (
               <p className="text-xs text-red-600">{form.formState.errors.name.message}</p>
@@ -84,7 +90,7 @@ export default function SettingsForm({
           </div>
 
           <div className="grid gap-2">
-            <label className="text-sm font-semibold text-slate-700" htmlFor="email">Email Address</label>
+            <label className="text-sm font-medium text-slate-700" htmlFor="email">Email address</label>
             <Input id="email" type="email" placeholder="your.email@company.com" {...form.register("email")} className="border-slate-300 focus-visible:ring-blue-400" />
             {form.formState.errors.email && (
               <p className="text-xs text-red-600">{form.formState.errors.email.message}</p>
@@ -92,7 +98,7 @@ export default function SettingsForm({
           </div>
 
           <div className="grid gap-2">
-            <label className="text-sm font-semibold text-slate-700" htmlFor="designation">Designation</label>
+            <label className="text-sm font-medium text-slate-700" htmlFor="designation">Designation</label>
             <Input id="designation" placeholder="e.g. Senior Engineer" {...form.register("designation")} className="border-slate-300 focus-visible:ring-blue-400" />
             {form.formState.errors.designation && (
               <p className="text-xs text-red-600">{form.formState.errors.designation.message}</p>
@@ -100,7 +106,7 @@ export default function SettingsForm({
           </div>
 
           <div className="grid gap-2">
-            <label className="text-sm font-semibold text-slate-700" htmlFor="department">Department</label>
+            <label className="text-sm font-medium text-slate-700" htmlFor="department">Department</label>
             <Input id="department" placeholder="e.g. Engineering, Sales, HR" {...form.register("department")} className="border-slate-300 focus-visible:ring-blue-400" />
             {form.formState.errors.department && (
               <p className="text-xs text-red-600">{form.formState.errors.department.message}</p>
@@ -108,8 +114,8 @@ export default function SettingsForm({
           </div>
 
           {role === "employee" && (
-            <div className="grid gap-2">
-              <label className="text-sm font-semibold text-slate-700" htmlFor="supervisorId">Supervisor</label>
+            <div className="grid gap-2 sm:col-span-2">
+              <label className="text-sm font-medium text-slate-700" htmlFor="supervisorId">Supervisor</label>
               <select
                 id="supervisorId"
                 className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition-colors focus-visible:ring-2 focus-visible:ring-blue-400"
@@ -129,27 +135,27 @@ export default function SettingsForm({
               )}
             </div>
           )}
+          </div>
 
           {state?.error && (
-            <Alert variant="destructive" className="border-red-300 bg-red-50">
+            <Alert variant="destructive" className="mt-5 border-red-300 bg-red-50">
               <AlertDescription className="text-red-800">{state.error}</AlertDescription>
             </Alert>
           )}
           {state?.success && (
-            <Alert className="border-green-300 bg-green-50">
+            <Alert className="mt-5 border-green-300 bg-green-50">
               <AlertDescription className="text-green-800">
                 {(state as any)?.message || "Profile updated successfully."}
               </AlertDescription>
             </Alert>
           )}
 
-          <div className="pt-2">
-            <Button type="submit" disabled={isPending} className="bg-blue-600 hover:bg-blue-700">
+          <div className="mt-6 flex justify-end border-t border-slate-100 pt-5">
+            <Button type="submit" disabled={isPending}>
               {isPending ? "Saving..." : "Save Changes"}
             </Button>
           </div>
         </form>
-      </div>
-    </div>
+    </section>
   );
 }

@@ -427,7 +427,10 @@ function Bill5ChildTable({
   onPickFile: (parentIndex: number, childIndex: number, file: File | null) => void;
   selectedColumns: Bill5OptionalColumn[];
 }) {
-  const parents = useWatch({ control, name: "items" }) as RowB5[];
+  const watchedChildren = useWatch({
+    control,
+    name: `items.${parentIndex}.children` as any,
+  }) as RowB5Child[] | undefined;
   const { fields: childFields, append: appendChild, remove: removeChild } = useFieldArray({ control, name: `items.${parentIndex}.children` as any });
 
   return (
@@ -509,6 +512,7 @@ function Bill5ChildTable({
                           <SelectItem value="Rickshaw">Rickshaw</SelectItem>
                           <SelectItem value="Bus">Bus</SelectItem>
                           <SelectItem value="CNG">CNG</SelectItem>
+                          <SelectItem value="L. CNG">L. CNG</SelectItem>
                           <SelectItem value="Boat">Boat</SelectItem>
                           <SelectItem value="Auto Rickshaw">Auto Rickshaw</SelectItem>
                           <SelectItem value="Launch">Launch</SelectItem>
@@ -528,7 +532,7 @@ function Bill5ChildTable({
                     <FormField control={control} name={`items.${parentIndex}.children.${ci}.${k}`} render={({ field }) => (
                       <FormItem>
                         <FormControl>
-                          <Input type="number" step="0.01" className={cn("no-spinner w-[90px] text-right", BILL5_FIELD_CLASS)} value={field.value ?? ""} onChange={(e)=> field.onChange(e.target.value==="" ? undefined : Number(e.target.value))} />
+                          <Input type="number" step="0.01" className={cn("no-spinner w-[90px] text-right", BILL5_FIELD_CLASS)} value={field.value ?? ""} onChange={(e)=> field.onChange(e.target.value === "" ? "" : Number(e.target.value))} />
                         </FormControl>
                         <FormMessage/>
                       </FormItem>
@@ -537,7 +541,7 @@ function Bill5ChildTable({
                 ))}
                 <TableCell className="text-right">
                   {(() => {
-                    const v = (parents[parentIndex]?.children?.[ci]) || {} as RowB5Child;
+                    const v = watchedChildren?.[ci] || {} as RowB5Child;
                     const sum = (Number(v.local)||0)+(Number(v.trip)||0)+(Number(v.food)||0)+(Number(v.hotel)||0)+(Number(v.others)||0);
                     const net = sum - (Number(v.advance)||0);
                     return net.toFixed(2);
@@ -679,12 +683,14 @@ function EditorBill5({
                               <PopoverContent className="w-auto p-0" align="start">
                                 <Calendar
                                   mode="single"
-                                  selected={
-                                    field.value
-                                      ? new Date(field.value)
-                                      : new Date()
-                                  }
-                                  onSelect={field.onChange}
+                                  selected={field.value ? new Date(field.value) : undefined}
+                                  onSelect={(date) => {
+                                    // react-day-picker returns undefined when the
+                                    // selected day is clicked again. Bill 5 dates
+                                    // are required, so keep the existing value
+                                    // instead of silently clearing the field.
+                                    if (date) field.onChange(date);
+                                  }}
                                   disabled={(d) => d < new Date("1900-01-01")}
                                 />
                               </PopoverContent>
@@ -1173,11 +1179,16 @@ export function BillForm(props: Props) {
   const { control, handleSubmit, reset } = form;
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
   const supervisors = "supervisors" in props ? props.supervisors ?? [] : [];
+  const formRecordId = "bill" in props ? props.bill?.id ?? "new-bill" : props.user.id;
 
-  // Reset form when defaults change (e.g., user data loads or bill format changes)
+  // Reset only when navigating to a different bill/user. Depending on the whole
+  // props/defaults object resets edited fields after every controlled-input
+  // keystroke because those objects are recreated during render.
   useEffect(() => {
     reset(defaults);
-  }, [defaults, reset]);
+    // Format changes are handled by the dedicated format-switch effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formRecordId, reset]);
 
   useEffect(() => {
     if ((draftState as any)?.success && (draftState as any)?.billId && lastDraftToastBillId.current !== (draftState as any).billId) {
@@ -1197,10 +1208,15 @@ export function BillForm(props: Props) {
   );
 
   // Watch rows for live totals
-  const watchedItems = useWatch({ control, name: "items" });
+  // `watch` at the form root reliably tracks nested Bill 5 child fields. A
+  // broad `useWatch("items")` subscription could miss child-array updates,
+  // leaving row and bill totals at 0 while the input showed the new amount.
+  const watchedItems = form.watch("items");
 
-  // totals for header/footer
-  const totals = useMemo(() => {
+  // Recalculate on every watched-field render. React Hook Form can update a
+  // nested child while retaining the same parent-array reference, so memoizing
+  // by `watchedItems` can leave the displayed total stale.
+  const totals = (() => {
     if (formatType === "BILL1") {
       const rows = (watchedItems as RowB1[]) || [];
       const total = rows.reduce((s, r) => s + (Number(r?.amount)||0), 0);
@@ -1237,7 +1253,7 @@ export function BillForm(props: Props) {
       return acc + (sum - (Number(r?.advance)||0));
     }, 0);
     return { total, words: numberToWords(total) + " Only" };
-  }, [watchedItems, formatType]);
+  })();
 
   const isSupervisorUser = "user" in props && (props.user as any)?.role === "supervisor";
   const makeSingleAttachmentRow = (): (File | null)[][] => [[null as File | null]];
@@ -1500,6 +1516,7 @@ export function BillForm(props: Props) {
     fd.append("amountInWords", totals.words);
     // supervisorId (optional) — allow supervisor to forward on submit
     if ((data as any).supervisorId) fd.append("supervisorId", (data as any).supervisorId);
+    if ((data as any).gmBypassConfirmation) fd.append("gmBypassConfirmation", (data as any).gmBypassConfirmation);
     fd.delete("employeeDesignation");
     return fd;
   };
@@ -1509,6 +1526,18 @@ export function BillForm(props: Props) {
       console.warn("Bill submit blocked: validation failed", d);
       if (typeof window !== "undefined") window.alert("Validation failed — please check required fields and try again.");
       return;
+    }
+    const currentUserIsGm = isSupervisorUser &&
+      String(("user" in props ? (props.user as any)?.designation || (props.user as any)?.name : "")).trim().toLowerCase() === "gm";
+    if (formatType === "BILL5" && isSupervisorUser && !currentUserIsGm && !(d as any).supervisorId) {
+      const confirmation = window.prompt(
+        'Are you sure you want to submit this bill to Accounts without GM approval?\n\nType "sure" to continue.'
+      );
+      if (confirmation?.trim().toLowerCase() !== "sure") {
+        window.alert("Submission cancelled. Forward this bill to the GM for approval.");
+        return;
+      }
+      (d as any).gmBypassConfirmation = confirmation;
     }
     // debug: log payload and totals (helps trace silent failures)
     try { console.log("Bill submit payload items:", d.items); console.log("totals:", totals); } catch {}
@@ -1758,7 +1787,9 @@ export function BillForm(props: Props) {
                 <FormControl>
                   <select {...field} className="w-full rounded-md border bg-background px-3 py-2 text-sm">
                     <option value="">Default — send to Accounts</option>
-                    {supervisors.map((s) => (
+                    {supervisors
+                      .filter((s) => formatType !== "BILL5" || String((s as any).designation || s.name).trim().toLowerCase() === "gm")
+                      .map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}{s.email ? ` (${s.email})` : ""}
                       </option>
@@ -2177,7 +2208,7 @@ function EditorBill1({
                           className="no-spinner text-right text-sm"
                           required
                           value={field.value ?? ""}
-                          onChange={(e)=> field.onChange(e.target.value==="" ? undefined : Number(e.target.value))}
+                          onChange={(e)=> field.onChange(e.target.value === "" ? "" : Number(e.target.value))}
                         />
                       </FormControl>
                       <FormMessage/>
@@ -2304,7 +2335,7 @@ function EditorBill2({
                           step="0.01"
                           className="no-spinner text-right w-[130px]"
                           value={field.value ?? ""}
-                          onChange={(e)=> field.onChange(e.target.value==="" ? undefined : Number(e.target.value))}
+                          onChange={(e)=> field.onChange(e.target.value === "" ? "" : Number(e.target.value))}
                         />
                       </FormControl><FormMessage/></FormItem>
                     )}/>
@@ -2464,7 +2495,7 @@ function EditorBill3({
                           step="0.01"
                           className="no-spinner text-right w-[130px]"
                           value={field.value ?? ""}
-                          onChange={(e)=> field.onChange(e.target.value==="" ? undefined : Number(e.target.value))}
+                          onChange={(e)=> field.onChange(e.target.value === "" ? "" : Number(e.target.value))}
                         />
                       </FormControl><FormMessage/></FormItem>
                     )}/>
@@ -2686,7 +2717,7 @@ function EditorBill4({
                             value={field.value ?? ""}
                             onChange={(e)=>
                               field.onChange(
-                                e.target.value === "" ? undefined : Number(e.target.value)
+                                e.target.value === "" ? "" : Number(e.target.value)
                               )
                             }
                           />
@@ -2722,7 +2753,7 @@ function EditorBill4({
                           value={field.value ?? ""}
                           onChange={(e)=>
                             field.onChange(
-                              e.target.value === "" ? undefined : Number(e.target.value)
+                              e.target.value === "" ? "" : Number(e.target.value)
                             )
                           }
                         />

@@ -12,6 +12,7 @@ import type { BillViewData } from "@/components/bills/bill-form";
 import { RequestReceiptButton } from "@/components/bills/RequestReceiptButton";
 import { ConfirmReceiveButton } from "@/components/bills/ConfirmReceiveButton";
 import { Button } from "@/components/ui/button";
+import { Bill5ApprovalForm } from "@/components/bills/Bill5ApprovalForm";
 import {
   cleanBillHistoryComment,
   employeeSubmittedAmount,
@@ -148,6 +149,11 @@ export default async function BillDetail({
   // supervisors for forwarding dropdown
   const supervisors = await listSupervisors();
   const otherSupervisors = supervisors.filter((supervisor) => supervisor.id !== session.user.id);
+  const gmSupervisor = supervisors.find((supervisor) =>
+    String(supervisor.designation || supervisor.name).trim().toLowerCase() === "gm"
+  );
+  const isCurrentUserGm =
+    String(session.user.designation || session.user.name).trim().toLowerCase() === "gm";
 
   const hasPaymentRequest = dbBill.history.some((h) =>
     (h.comment ?? "").toLowerCase().includes("payment requested from employee")
@@ -165,8 +171,23 @@ async function approveOrForward(formData: FormData) {
 
   const action = String(formData.get("action") || "approve");
   const nextSupervisorId = (formData.get("nextSupervisorId") as string) || "";
+  const gmBypassConfirmation = String(formData.get("gmBypassConfirmation") || "").trim().toLowerCase();
 
   if (action === "approve") {
+    const supervisorsNow = isBill5 ? await listSupervisors() : [];
+    const gmNow = supervisorsNow.find((supervisor) =>
+      String(supervisor.designation || supervisor.name).trim().toLowerCase() === "gm"
+    );
+    const sessionUserIsGm =
+      String(sessionNow.user.designation || sessionNow.user.name).trim().toLowerCase() === "gm";
+    if (isBill5 && !sessionUserIsGm) {
+      if (nextSupervisorId && nextSupervisorId !== gmNow?.id) {
+        throw new Error("This bill must be forwarded to the GM.");
+      }
+      if (!nextSupervisorId && gmBypassConfirmation !== "sure") {
+        throw new Error('Type "sure" to submit this bill to Accounts without GM approval.');
+      }
+    }
     if (nextSupervisorId) {
       // forward to another supervisor
       await updateBillStatus(billId, undefined, sessionNow.user.id, "Forwarded", nextSupervisorId);
@@ -345,7 +366,14 @@ async function approveOrForward(formData: FormData) {
           {/* SUPERVISOR STAGE: approve or forward, or reject */}
           {canThisSupervisorApprove && (
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <form action={approveOrForward} className="flex items-center gap-2">
+              <Bill5ApprovalForm
+                action={approveOrForward}
+                supervisors={otherSupervisors}
+                gmSupervisor={gmSupervisor}
+                isBill5={isBill5}
+                isCurrentUserGm={isCurrentUserGm}
+              />
+              <form action={approveOrForward} className="hidden">
   <label className="text-sm">Forward to:</label>
   <select name="nextSupervisorId" className="rounded border px-2 py-1">
     <option value="">Default — send to Accounts</option>

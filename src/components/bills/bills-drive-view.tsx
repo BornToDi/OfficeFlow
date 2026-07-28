@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { ArrowUpRight, FileText, Hash, UserRound } from "lucide-react";
 
 type PlainUser = {
   id: string;
@@ -103,6 +104,85 @@ function StatusPill({ status }: { status: Status }) {
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${color}`}>
       {label.charAt(0).toUpperCase() + label.slice(1)}
     </span>
+  );
+}
+
+function decodeItemPurpose(value: string) {
+  try {
+    const parsed = JSON.parse(value || "{}");
+    return {
+      incident: String(parsed.incident || ""),
+      purpose: String(parsed.purpose || ""),
+      vehicle: String(parsed.vehicle || ""),
+    };
+  } catch {
+    return { incident: "", purpose: value || "", vehicle: "" };
+  }
+}
+
+function ExpandedBillDetails({ bill, ownerName }: { bill: PlainBill; ownerName: string }) {
+  return (
+    <div className="border-t border-violet-100 bg-slate-50/80 p-4 sm:p-6">
+      <div className="mb-5 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+            <UserRound className="h-4 w-4" /> Employee
+          </div>
+          <p className="font-semibold text-slate-900">{ownerName}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+            <Hash className="h-4 w-4" /> Employee ID
+          </div>
+          <p className="font-mono font-semibold text-slate-900">{bill.employee?.employeeCode || "—"}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+            <FileText className="h-4 w-4" /> Bill reference
+          </div>
+          <p className="font-mono font-semibold text-slate-900">{bill.id.slice(-4).toUpperCase()}</p>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <table className="min-w-full text-sm">
+          <thead className="bg-slate-100/80 text-xs uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="px-4 py-3 text-left">Date</th>
+              <th className="px-4 py-3 text-left">Incident</th>
+              <th className="px-4 py-3 text-left">Purpose</th>
+              <th className="px-4 py-3 text-left">Vehicle</th>
+              <th className="px-4 py-3 text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bill.items.map((item, index) => {
+              const detail = decodeItemPurpose(item.purpose);
+              const vehicle = detail.vehicle || (item.transport === "__BILL5__" ? "" : item.transport) || "—";
+              return (
+                <tr key={item.id || index} className="border-t border-slate-100 transition-colors hover:bg-slate-50">
+                  <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatDateISO(item.date)}</td>
+                  <td className="px-4 py-3 font-medium text-slate-900">{detail.incident || "—"}</td>
+                  <td className="max-w-md px-4 py-3 text-slate-700">{detail.purpose || "—"}</td>
+                  <td className="px-4 py-3 text-slate-600">{vehicle}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-900">{formatBDT(Number(item.amount))}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-4 flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Amount in words</p>
+          <p className="mt-1 text-sm font-medium text-slate-800">{bill.amountInWords}</p>
+        </div>
+        <Button asChild className="gap-2">
+          <Link href={`/bills/${bill.id}`}>View full bill <ArrowUpRight className="h-4 w-4" /></Link>
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -235,6 +315,13 @@ export function BillsDriveView({ bills, users, isSupervisor }: Props) {
                 </button>
 
                 {isOpen && (
+                  <ExpandedBillDetails
+                    bill={b}
+                    ownerName={b.employee?.name ?? nameById.get(b.employeeId) ?? "—"}
+                  />
+                )}
+
+                {false && isOpen && (
                   <div className="bg-white px-4 py-4">
                     <div className="grid md:grid-cols-3 gap-4 mb-4 text-sm">
                       <div>

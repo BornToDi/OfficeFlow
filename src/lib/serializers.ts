@@ -22,20 +22,27 @@ export function toPlainUser(user: any) {
 
 export function toPlainBill(bill: any) {
   if (!bill) return null;
+  const plainItems = Array.isArray(bill.items)
+    ? bill.items.map((it: any) => ({
+        ...it,
+        date: toISO(it.date),
+        amount: it?.amount && typeof it.amount === "object" && typeof it.amount.toNumber === "function" ? Number(it.amount.toNumber()) : Number(it.amount ?? 0),
+      }))
+    : bill.items;
+  const itemTotal = Array.isArray(plainItems)
+    ? plainItems.reduce((sum: number, item: any) => sum + (Number(item.amount) || 0), 0)
+    : null;
   return {
     ...bill,
-    // Prisma Decimal -> string
-    amount: bill?.amount?.toString ? bill.amount.toString() : bill.amount,
+    // Keep dashboards and bill details aligned by using line items as the
+    // canonical total. Fall back to the stored aggregate for bills without rows.
+    amount: Array.isArray(plainItems) && plainItems.length
+      ? itemTotal
+      : bill?.amount?.toString ? bill.amount.toString() : bill.amount,
     createdAt: toISO(bill.createdAt),
     updatedAt: toISO(bill.updatedAt),
     // normalize nested arrays/objects if present
-    items: Array.isArray(bill.items)
-      ? bill.items.map((it: any) => ({
-          ...it,
-          date: toISO(it.date),
-          amount: it?.amount && typeof it.amount === "object" && typeof it.amount.toNumber === "function" ? Number(it.amount.toNumber()) : Number(it.amount ?? 0),
-        }))
-      : bill.items,
+    items: plainItems,
     history: Array.isArray(bill.history)
       ? bill.history.map((h: any) => ({
           ...h,

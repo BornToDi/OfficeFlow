@@ -678,6 +678,7 @@ async function parseBillForm(formData: FormData, currentUserRole: "employee" | "
   const itemsJSON = (formData.get("items") as string) || "[]";
   const existingBillId = (formData.get("billId") as string) || "";
   const formatType = (formData.get("formatType") as string) || "BILL1";
+  const gmBypassConfirmation = String(formData.get("gmBypassConfirmation") || "").trim().toLowerCase();
   
   const supervisorId = (formData.get("supervisorId") as string) || "";
   // accept either name (old forms still OK)
@@ -721,7 +722,12 @@ async function parseBillForm(formData: FormData, currentUserRole: "employee" | "
     }
   }
 
-  const totalAmount = Number(totalAmountStr || 0);
+  // Line items are the source of truth. Nested bill editors can render their
+  // aggregate one update behind during rapid edits, so never persist a stale
+  // hidden total when item amounts are available.
+  const submittedTotal = Number(totalAmountStr || 0);
+  const itemTotal = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const totalAmount = items.length ? itemTotal : submittedTotal;
 
   return {
     existingBillId,
@@ -733,7 +739,30 @@ async function parseBillForm(formData: FormData, currentUserRole: "employee" | "
     totalAmount,
     items,
     supervisorId,
+    formatType,
+    gmBypassConfirmation,
   };
+}
+
+async function enforceBill5GmRoute(parsed: { formatType: string; supervisorId: string; gmBypassConfirmation: string }, user: { id: string; name?: string | null; designation?: string | null }) {
+  if (parsed.formatType !== "BILL5") return;
+  const isGm = String(user.designation || user.name || "").trim().toLowerCase() === "gm";
+  if (isGm) return;
+
+  const supervisors = await prisma.user.findMany({
+    where: { role: "supervisor" },
+    select: { id: true, name: true, designation: true },
+  });
+  const gm = supervisors.find((supervisor) =>
+    String(supervisor.designation || supervisor.name).trim().toLowerCase() === "gm"
+  );
+  if (parsed.supervisorId) {
+    if (!gm || parsed.supervisorId !== gm.id) throw new Error("This bill must be forwarded to the GM.");
+    return;
+  }
+  if (parsed.gmBypassConfirmation !== "sure") {
+    throw new Error('Type "sure" to submit this bill to Accounts without GM approval.');
+  }
 }
 
 /* ----------------------------- BILLS ----------------------------- */
@@ -840,6 +869,7 @@ export async function submitBill(
 
   try {
     const parsed = await parseBillForm(formData, session.user.role as any);
+    if (session.user.role === "supervisor") await enforceBill5GmRoute(parsed, session.user);
 
     const employeeIdToUse =
       session.user.role === "employee"

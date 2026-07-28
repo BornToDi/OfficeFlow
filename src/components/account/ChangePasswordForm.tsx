@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
+import { LockKeyhole } from "lucide-react";
 
 const schema = z.object({
   currentPassword: z.string().min(1, "Current password is required."),
@@ -42,24 +43,31 @@ export default function ChangePasswordForm() {
   };
 
   return (
-    <div className="w-full">
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-2xl font-bold text-slate-900">Change Password</h2>
-        <p className="mt-1 text-sm text-slate-600">Update your account password. Current password required for security.</p>
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-start gap-3 px-5 py-5 sm:px-6">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
+          <LockKeyhole className="h-5 w-5" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Password & security</h2>
+          <p className="mt-0.5 text-sm text-slate-500">Use your current password to set a new one.</p>
+        </div>
+      </div>
 
-        <Separator className="my-5" />
+        <Separator />
 
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="p-5 sm:p-6">
+          <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
           <div className="grid gap-2">
-            <label className="text-sm font-semibold text-slate-700" htmlFor="currentPassword">Current Password</label>
+            <label className="text-sm font-medium text-slate-700" htmlFor="currentPassword">Current password</label>
             <Input id="currentPassword" type="password" placeholder="••••••••" {...form.register("currentPassword")} className="border-slate-300 focus-visible:ring-amber-400" />
             {form.formState.errors.currentPassword && (
               <p className="text-xs text-red-600">{form.formState.errors.currentPassword.message as string}</p>
             )}
           </div>
 
-          <div className="grid gap-2">
-            <label className="text-sm font-semibold text-slate-700" htmlFor="newPassword">New Password</label>
+          <div className="grid gap-2 sm:col-start-1">
+            <label className="text-sm font-medium text-slate-700" htmlFor="newPassword">New password</label>
             <Input id="newPassword" type="password" placeholder="••••••••" {...form.register("newPassword")} className="border-slate-300 focus-visible:ring-amber-400" />
             {form.formState.errors.newPassword && (
               <p className="text-xs text-red-600">{form.formState.errors.newPassword.message as string}</p>
@@ -67,31 +75,31 @@ export default function ChangePasswordForm() {
           </div>
 
           <div className="grid gap-2">
-            <label className="text-sm font-semibold text-slate-700" htmlFor="confirmPassword">Confirm New Password</label>
+            <label className="text-sm font-medium text-slate-700" htmlFor="confirmPassword">Confirm new password</label>
             <Input id="confirmPassword" type="password" placeholder="••••••••" {...form.register("confirmPassword")} className="border-slate-300 focus-visible:ring-amber-400" />
             {form.formState.errors.confirmPassword && (
               <p className="text-xs text-red-600">{form.formState.errors.confirmPassword.message as string}</p>
             )}
           </div>
+          </div>
 
           {state?.error && (
-            <Alert variant="destructive" className="border-red-300 bg-red-50">
+            <Alert variant="destructive" className="mt-5 border-red-300 bg-red-50">
               <AlertDescription className="text-red-800">{state.error}</AlertDescription>
             </Alert>
           )}
           {state?.success && (
-            <Alert className="border-green-300 bg-green-50">
+            <Alert className="mt-5 border-green-300 bg-green-50">
               <AlertDescription className="text-green-800">Password changed successfully.</AlertDescription>
             </Alert>
           )}
 
-          <div className="pt-2">
-            <Button type="submit" disabled={isPending} className="bg-amber-600 hover:bg-amber-700">
+          <div className="mt-6 flex justify-end border-t border-slate-100 pt-5">
+            <Button type="submit" disabled={isPending}>
               {isPending ? "Saving..." : "Change Password"}
             </Button>
           </div>
         </form>
-      </div>
-    </div>
+    </section>
   );
 }
