@@ -736,6 +736,41 @@ export async function updateBillStatus(
   return updated;
 }
 
+/** Atomically approves Bill-5 bills currently waiting for the specified GM. */
+export async function approveBill5BatchForGm(billIds: string[], gmId: string) {
+  const uniqueIds = [...new Set(billIds.map(String).filter(Boolean))];
+  if (!uniqueIds.length) throw new Error("Select at least one bill.");
+
+  return prisma.$transaction(async (tx) => {
+    const eligible = await tx.bill.findMany({
+      where: {
+        id: { in: uniqueIds },
+        status: "SUBMITTED",
+        supervisorId: gmId,
+        items: { some: { transport: "__BILL5__" } },
+      },
+      select: { id: true },
+    });
+    if (eligible.length !== uniqueIds.length) {
+      throw new Error("One or more bills are no longer eligible for GM approval. Refresh and try again.");
+    }
+
+    await tx.bill.updateMany({
+      where: { id: { in: uniqueIds } },
+      data: { status: "APPROVED_BY_SUPERVISOR" },
+    });
+    await tx.billHistory.createMany({
+      data: uniqueIds.map((billId) => ({
+        billId,
+        actorId: gmId,
+        status: "APPROVED_BY_SUPERVISOR" as const,
+        comment: `Bulk approved by Bill-5 GM (${uniqueIds.length} bill${uniqueIds.length === 1 ? "" : "s"}) and sent to Accounts`,
+      })),
+    });
+    return { count: uniqueIds.length };
+  });
+}
+
 
 export async function listAllUsers() {
   const users = await prisma.user.findMany({

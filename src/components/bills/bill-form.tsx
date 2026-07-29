@@ -13,7 +13,6 @@ import { downloadBillPdf } from "@/lib/download-bill-pdf";
 
 import { submitBill, saveDraft } from "@/lib/actions";
 import { cn, numberToWords } from "@/lib/utils";
-import { isGmIdentity } from "@/lib/bill-visibility";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -377,7 +376,7 @@ function AttachmentPreview({ url }: { url: string }) {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button type="button" variant="link" className="h-auto p-0 text-primary underline">
+        <Button type="button" variant="link" className="h-auto p-6 text-primary underline">
           View
         </Button>
       </DialogTrigger>
@@ -436,7 +435,7 @@ function Bill5ChildTable({
   const { fields: childFields, append: appendChild, remove: removeChild } = useFieldArray({ control, name: `items.${parentIndex}.children` as any });
 
   return (
-    <div className="min-w-0 w-full max-w-full">
+    <div className="min-w-0 w-full max-w-full [&_th]:h-9 [&_th]:px-2 [&_td]:px-1 [&_td]:py-1">
       <div className="w-full max-w-full overflow-x-auto rounded-md border border-slate-200 bg-white">
         <Table>
           <TableHeader className="bg-slate-50/90">
@@ -570,7 +569,7 @@ function Bill5ChildTable({
           </TableBody>
         </Table>
       </div>
-      <div className="mt-2">
+      <div className="mt-1">
         <Button type="button" variant="outline" size="sm" onClick={() => appendChild({ purpose: "", time: "", dateFrom: "", dateTo: "", vehicle: "", local: undefined, trip: undefined, food: undefined, hotel: undefined, others: undefined, advance: undefined, remarks: "" } as any)}>
           <PlusCircle className="mr-2 h-4 w-4" /> Add row
         </Button>
@@ -603,19 +602,19 @@ function EditorBill5({
 }) {
   return (
     <div className="min-w-0 w-full max-w-full overflow-hidden">
-      <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50/70 p-4 shadow-sm">
-        <div className="mb-3 flex items-center gap-2">
+      <div className="mb-2 rounded-lg border border-slate-200 bg-slate-50/70 p-2 shadow-sm">
+        <div className="mb-2 flex items-center gap-2">
           <span className="text-sm font-semibold text-slate-800">Add columns</span>
           <span className="text-xs text-slate-500">Tick to add, untick to remove</span>
         </div>
-        <div className="flex flex-wrap gap-2.5">
+        <div className="flex flex-wrap gap-1.5">
           {BILL5_OPTIONAL_COLUMNS.map((column) => {
             const checked = selectedColumns.includes(column.key);
             return (
               <label
                 key={column.key}
                 className={cn(
-                  "flex cursor-pointer select-none items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition-colors",
+                  "flex cursor-pointer select-none items-center gap-1.5 rounded-full border px-2 py-1 text-sm font-medium transition-colors",
                   checked
                     ? "border-primary/40 bg-primary/5 text-primary"
                     : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50"
@@ -634,14 +633,14 @@ function EditorBill5({
       </div>
       <div className="w-full max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="w-full max-w-full overflow-x-auto">
-          <Table className="w-max min-w-[1700px]">
+          <Table className="w-max min-w-[1450px] [&_th]:h-9 [&_th]:px-2 [&_td]:py-1">
             <TableHeader className="bg-slate-50/90">
               <TableRow className="border-slate-200 hover:bg-transparent">
                 <TableHead>SL</TableHead>
                 <TableHead>Date From</TableHead>
                 <TableHead>Date To</TableHead>
-                <TableHead className="min-w-[220px]">Incident</TableHead>
-                <TableHead className="min-w-[640px]">
+                <TableHead className="min-w-[150px]">Incident</TableHead>
+                <TableHead className="min-w-[560px]">
                   Purpose (click Add row to add nested child)
                 </TableHead>
                 <TableHead />
@@ -704,7 +703,7 @@ function EditorBill5({
                     </TableCell>
                   ))}
 
-                  <TableCell className="p-1 min-w-[220px]">
+                  <TableCell className="p-1 min-w-[150px]">
                     <FormField
                       control={control}
                       name={`items.${i}.incident`}
@@ -715,7 +714,7 @@ function EditorBill5({
                               placeholder="Incident"
                               {...field}
                               autoComplete="off"
-                              className={cn("w-[220px]", BILL5_FIELD_CLASS)}
+                              className={cn("w-[150px]", BILL5_FIELD_CLASS)}
                             />
                           </FormControl>
                           <FormMessage />
@@ -757,7 +756,7 @@ function EditorBill5({
       <Button
         type="button"
         variant="outline"
-        className="mt-4"
+        className="mt-2"
         onClick={() =>
           append({
             name: employeeName || "",
@@ -1036,6 +1035,8 @@ export function BillForm(props: Props) {
   const [submitState, submitAction] = useActionState(submitBill, undefined);
   const [draftState,  draftAction]  = useActionState(saveDraft, undefined);
   const [isPending, startTransition] = useTransition();
+  const [reviewData, setReviewData] = useState<BillFormValues | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const lastDraftToastBillId = useRef<string | undefined>(undefined);
   const downloadedSubmittedBillId = useRef<string | undefined>(undefined);
 
@@ -1536,9 +1537,40 @@ export function BillForm(props: Props) {
     fd.append("amountInWords", totals.words);
     // supervisorId (optional) — allow supervisor to forward on submit
     if ((data as any).supervisorId) fd.append("supervisorId", (data as any).supervisorId);
-    if ((data as any).gmBypassConfirmation) fd.append("gmBypassConfirmation", (data as any).gmBypassConfirmation);
     fd.delete("employeeDesignation");
     return fd;
+  };
+
+  const buildReviewBill = (data: BillFormValues): BillViewData => {
+    const payload = toServerFD(data);
+    const items = JSON.parse(String(payload.get("items") || "[]")).map((item: any, index: number) => ({
+      id: `review-${index}`,
+      ...item,
+      attachmentUrl: props.bill?.items?.[index]?.attachmentUrl ?? null,
+    }));
+    return {
+      id: data.billId || "review",
+      companyName: data.companyName || "",
+      companyAddress: data.companyAddress || "",
+      employeeId: effectiveEmployeeId,
+      employeeName: data.employeeName || "",
+      employeeDesignation: data.employeeDesignation || null,
+      employeeCode: effectiveEmployeeCode,
+      amount: totals.total,
+      amountInWords: totals.words,
+      status: "DRAFT",
+      items,
+    };
+  };
+
+  const renderFullReview = (data: BillFormValues) => {
+    const bill = buildReviewBill(data);
+    const designation = data.employeeDesignation || undefined;
+    if (formatType === "BILL1") return <ViewBill1 b={bill} fallbackDesignation={designation} />;
+    if (formatType === "BILL2") return <ViewBill2 b={bill} fallbackDesignation={designation} />;
+    if (formatType === "BILL3") return <ViewBill3 b={bill} fallbackDesignation={designation} />;
+    if (formatType === "BILL5") return <ViewBill5 b={bill} fallbackDesignation={designation} />;
+    return null;
   };
 
   const onSubmitFinal = (d: BillFormValues) => {
@@ -1547,21 +1579,13 @@ export function BillForm(props: Props) {
       if (typeof window !== "undefined") window.alert("Validation failed — please check required fields and try again.");
       return;
     }
-    const currentUserIsGm = isSupervisorUser &&
-      isGmIdentity("user" in props && props.user ? props.user : {});
-    if (formatType === "BILL5" && isSupervisorUser && !currentUserIsGm && !(d as any).supervisorId) {
-      const confirmation = window.prompt(
-        'Are you sure you want to submit this bill to Accounts without GM approval?\n\nType "sure" to continue.'
-      );
-      if (confirmation?.trim().toLowerCase() !== "sure") {
-        window.alert("Submission cancelled. Forward this bill to the GM for approval.");
-        return;
-      }
-      (d as any).gmBypassConfirmation = confirmation;
-    }
-    // debug: log payload and totals (helps trace silent failures)
-    try { console.log("Bill submit payload items:", d.items); console.log("totals:", totals); } catch {}
-    startTransition(() => submitAction(toServerFD(d)));
+    setReviewData(d);
+    setReviewOpen(true);
+  };
+  const confirmReviewedSubmit = () => {
+    if (!reviewData) return;
+    setReviewOpen(false);
+    startTransition(() => submitAction(toServerFD(reviewData)));
   };
   const onSaveDraft  = (d: BillFormValues) => {
     if (!validateAll()) return;
@@ -1655,7 +1679,10 @@ export function BillForm(props: Props) {
       <form
         onSubmit={handleSubmit(onSubmitFinal)}
         autoComplete="off"
-        className="mx-auto min-w-0 w-full max-w-full space-y-6 overflow-hidden rounded-xl border bg-white p-3 shadow-sm sm:p-5 md:p-8"
+        className={cn(
+          "mx-auto min-w-0 w-full max-w-full overflow-hidden rounded-xl border bg-white p-1.5 shadow-sm max-sm:[&_input]:h-11 max-sm:[&_select]:h-11 sm:p-5",
+          formatType === "BILL5" ? "space-y-3 md:p-5" : "space-y-6 md:p-8"
+        )}
       >
         {/* Hidden bill id if editing */}
         <FormField control={control} name="billId" render={({ field }) => <input type="hidden" name={field.name} value={field.value ?? ""} onChange={field.onChange} onBlur={field.onBlur} ref={field.ref} />} />
@@ -1664,16 +1691,16 @@ export function BillForm(props: Props) {
         <input type="hidden" name="employeeIdOrCode" value={effectiveEmployeeCode} />
         <input type="hidden" name="employeeId" value={effectiveEmployeeId} />
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className={cn("grid md:grid-cols-2", formatType === "BILL5" ? "gap-x-4 gap-y-2" : "gap-4")}>
           <FormField control={control} name="companyName" render={({ field }) => (
-            <FormItem>
+            <FormItem className="max-sm:hidden">
               <FormLabel>Company Name</FormLabel>
               <FormControl><Input {...field} autoComplete="off" required /></FormControl>
               <FormMessage/>
             </FormItem>
           )}/>
           <FormField control={control} name="companyAddress" render={({ field }) => (
-            <FormItem>
+            <FormItem className="max-sm:hidden">
               <FormLabel>Company Address</FormLabel>
               <FormControl><Input {...field} autoComplete="off" required /></FormControl>
               <FormMessage/>
@@ -1688,9 +1715,9 @@ export function BillForm(props: Props) {
           )}/>
 
           {/* READ-ONLY Employee Code */}
-          <div>
+          <div className="max-sm:hidden">
             <p className="text-sm font-medium">Employee Code</p>
-            <p className="mt-2 font-mono">{effectiveEmployeeCode || "-"}</p>
+            <p className={cn("font-mono", formatType === "BILL5" ? "mt-1" : "mt-2")}>{effectiveEmployeeCode || "-"}</p>
           </div>
 
           <FormField control={control} name="employeeDesignation" render={({ field }) => (
@@ -1784,7 +1811,7 @@ export function BillForm(props: Props) {
           />
         )} */}
 
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className={cn("flex flex-wrap items-start justify-between", formatType === "BILL5" ? "gap-2" : "gap-4")}>
           <div>
             <p className="font-medium">Amount in Words:</p>
             <p className="text-muted-foreground">{totals.words}</p>
@@ -1803,10 +1830,10 @@ export function BillForm(props: Props) {
             name="supervisorId"
             render={({ field }) => (
               <FormItem className="md:col-span-2">
-                <FormLabel>Forward to Supervisor (optional)</FormLabel>
+                <FormLabel>{formatType === "BILL5" ? "Forward to another Supervisor (optional; otherwise goes to GM)" : "Forward to Supervisor (optional)"}</FormLabel>
                 <FormControl>
                   <select {...field} className="w-full rounded-md border bg-background px-3 py-2 text-sm">
-                    <option value="">Default — send to Accounts</option>
+                    <option value="">{formatType === "BILL5" ? "Default — forward to Bill-5 GM" : "Default — send to Accounts"}</option>
                     {supervisors.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}{s.email ? ` (${s.email})` : ""}
@@ -1830,12 +1857,28 @@ export function BillForm(props: Props) {
           </Alert>
         ) : null}
 
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <div className={cn("flex flex-col sm:flex-row", formatType === "BILL5" ? "gap-2" : "gap-3")}>
           <Button type="button" variant="secondary" onClick={handleSubmit(onSaveDraft)} disabled={isPending}>
             Save Draft
           </Button>
-          <SubmitButton isPending={isPending}>Submit Bill</SubmitButton>
+          <SubmitButton isPending={isPending}>Review &amp; Submit</SubmitButton>
         </div>
+
+        <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
+          <DialogContent className="grid h-[96vh] w-[98vw] max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-2 p-3 sm:p-4">
+            <DialogHeader>
+              <DialogTitle>Review your bill before submission</DialogTitle>
+              <p className="text-sm text-muted-foreground">Check the information below. Nothing will be submitted until you confirm.</p>
+            </DialogHeader>
+            <div className="min-h-0 overflow-auto rounded-lg bg-slate-100 p-0.5 max-sm:[&>div]:p-2 sm:p-2">
+              {reviewData ? renderFullReview(reviewData) : null}
+            </div>
+            <div className="flex flex-col-reverse gap-2 border-t pt-3 sm:flex-row sm:justify-end">
+              <Button type="button" variant="outline" onClick={() => setReviewOpen(false)}>Back to edit</Button>
+              <Button type="button" onClick={confirmReviewedSubmit} disabled={isPending}>Confirm &amp; Submit Bill</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </form>
     </FormProvider>
   );
@@ -1849,11 +1892,10 @@ function HeaderInfo({ b, fallbackDesignation }: { b: BillViewData; fallbackDesig
       : (fallbackDesignation ?? "-");
 
   return (
-    <div className="mb-4 grid gap-4 md:grid-cols-2">
+    <div className="bill-header-info mb-4 grid gap-4 md:grid-cols-2">
       <div><p className="text-xs text-muted-foreground">Company Name</p><p className="font-medium">{b.companyName}</p></div>
       <div><p className="text-xs text-muted-foreground">Company Address</p><p className="font-medium">{b.companyAddress}</p></div>
       <div><p className="text-xs text-muted-foreground">Employee Name</p><p className="font-medium">{b.employeeName}</p></div>
-      <div><p className="text-xs text-muted-foreground">Department</p><p className="font-medium">{b.employeeDepartment ?? "-"}</p></div>
       <div><p className="text-xs text-muted-foreground">Employee Code</p><p className="font-medium">{b.employeeCode ?? "-"}</p></div>
       <div className="md:col-span-2"><p className="text-xs text-muted-foreground">Designation</p><p className="font-medium">{designation}</p></div>
     </div>
@@ -2168,17 +2210,17 @@ function EditorBill1({
 
   return (
     <>
-      <div className="rounded-lg border overflow-x-auto">
-        <Table>
+      <div className="overflow-x-auto overscroll-x-contain rounded-lg border max-sm:[&_button]:text-base max-sm:[&_input]:text-base">
+        <Table className="min-w-[1160px]">
           <TableHeader>
             <TableRow>
               <TableHead className="w-[50px] text-sm font-semibold">No.</TableHead>
-              <TableHead className="w-[150px] text-sm font-semibold">Date</TableHead>
-              <TableHead className="text-sm font-semibold">From</TableHead>
-              <TableHead className="text-sm font-semibold">To</TableHead>
-              <TableHead className="text-sm font-semibold">Transport</TableHead>
-              <TableHead className="text-sm font-semibold">Purpose</TableHead>
-              <TableHead className="text-right text-sm font-semibold">Amount</TableHead>
+              <TableHead className="w-[190px] text-sm font-semibold">Date</TableHead>
+              <TableHead className="min-w-[190px] text-sm font-semibold">From</TableHead>
+              <TableHead className="min-w-[190px] text-sm font-semibold">To</TableHead>
+              <TableHead className="min-w-[170px] text-sm font-semibold">Transport</TableHead>
+              <TableHead className="min-w-[260px] text-sm font-semibold">Purpose</TableHead>
+              <TableHead className="min-w-[140px] text-right text-sm font-semibold">Amount</TableHead>
               <TableHead />
             </TableRow>
           </TableHeader>
@@ -2192,7 +2234,7 @@ function EditorBill1({
                       <Popover>
                         <PopoverTrigger asChild>
                           <FormControl>
-                            <Button type="button" variant="outline" className={cn("w-full justify-start pl-3 text-left", !field.value && "text-muted-foreground")}>
+                            <Button type="button" variant="outline" className={cn("w-[190px] justify-start pl-3 text-left", !field.value && "text-muted-foreground")}>
                               {field.value ? format(new Date(field.value), "PPP") : "Pick a date"}
                               <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                             </Button>
@@ -2210,7 +2252,7 @@ function EditorBill1({
                   <TableCell className="p-1" key={k}>
                     <FormField control={control} name={`items.${i}.${k}`} render={({ field })=>(
                       <FormItem>
-                        <FormControl><Input {...field} placeholder={k} required /></FormControl>
+                        <FormControl><Input {...field} className={cn(k === "purpose" ? "w-[260px]" : k === "transport" ? "w-[170px]" : "w-[190px]")} placeholder={k} required /></FormControl>
                         <FormMessage/>
                       </FormItem>
                     )}/>
@@ -2223,7 +2265,7 @@ function EditorBill1({
                         <Input
                           type="number"
                           step="0.01"
-                          className="no-spinner text-right text-sm"
+                          className="no-spinner w-[140px] text-right text-base sm:text-sm"
                           required
                           value={field.value ?? ""}
                           onChange={(e)=> field.onChange(e.target.value === "" ? "" : Number(e.target.value))}
@@ -2276,7 +2318,7 @@ function EditorBill2({
           return <label key={column.key} className={cn("inline-flex cursor-pointer select-none items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium", checked ? "border-primary/40 bg-primary/5 text-primary" : "border-slate-300 bg-white")}><Checkbox checked={checked} onCheckedChange={(value) => onToggleColumn(column.key, value === true)} className="h-5 w-5 rounded-full border-slate-400" />{column.label}</label>;
         })}
       </div>
-      <div className="rounded-lg border overflow-x-auto">
+      <div className="overflow-x-auto overscroll-x-contain rounded-lg border max-sm:[&_button]:text-base max-sm:[&_input]:text-base">
         <Table>
           <TableHeader>
             <TableRow>
@@ -2302,12 +2344,12 @@ function EditorBill2({
                 <TableCell className="p-1 pt-3 font-medium">{i+1}</TableCell>
                 <TableCell className="p-1 min-w-[140px]">
                   <FormField control={control} name={`items.${i}.from`} render={({ field })=>(
-                    <FormItem><FormControl><Input placeholder="From" {...field} className="w-[180px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input placeholder="From" {...field} className="w-[220px] sm:w-[190px]" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
                 <TableCell className="p-1 min-w-[140px]">
                   <FormField control={control} name={`items.${i}.to`} render={({ field })=>(
-                    <FormItem><FormControl><Input placeholder="To" {...field} className="w-[180px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input placeholder="To" {...field} className="w-[220px] sm:w-[190px]" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
                 {(["dateFrom","dateTo"] as const).map((k)=>(
@@ -2317,7 +2359,7 @@ function EditorBill2({
                         <Popover>
                           <PopoverTrigger asChild>
                             <FormControl>
-                              <Button type="button" variant="outline" className={cn("w-full justify-start pl-3 text-left", !field.value && "text-muted-foreground")}>
+                              <Button type="button" variant="outline" className={cn("w-[190px] justify-start pl-3 text-left", !field.value && "text-muted-foreground")}>
                                 {field.value ? format(new Date(field.value), "PPP") : "Pick a date"}
                                 <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                               </Button>
@@ -2341,7 +2383,7 @@ function EditorBill2({
                 ) : null}
                 <TableCell className="p-1 min-w-[220px]">
                   <FormField control={control} name={`items.${i}.purpose`} render={({ field })=>(
-                    <FormItem><FormControl><Input placeholder="Purpose" {...field} className="w-[280px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input placeholder="Purpose" {...field} className="w-[320px] sm:w-[280px]" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
                 {(["local", ...selectedColumns.filter((column) => column !== "bankName")] as Array<"local" | Exclude<Bill2OptionalColumn, "bankName">>).map((k)=>(
@@ -2351,7 +2393,7 @@ function EditorBill2({
                         <Input
                           type="number"
                           step="0.01"
-                          className="no-spinner text-right w-[130px]"
+                          className="no-spinner w-[145px] text-right text-base sm:w-[130px] sm:text-sm"
                           value={field.value ?? ""}
                           onChange={(e)=> field.onChange(e.target.value === "" ? "" : Number(e.target.value))}
                         />
@@ -2378,7 +2420,7 @@ function EditorBill2({
                 </TableCell>
                 <TableCell className="p-3 min-w-[180px]">
                   <FormField control={control} name={`items.${i}.remarks`} render={({ field })=>(
-                    <FormItem><FormControl><Input placeholder="Remarks" {...field} className="w-[220px] text-sm" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input placeholder="Remarks" {...field} className="w-[260px] text-base sm:w-[220px] sm:text-sm" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
 
@@ -2433,7 +2475,7 @@ function EditorBill3({
   return (
     <>
       <BankColumnToggle checked={showBankName} onChange={onToggleBank} />
-      <div className="rounded-lg border overflow-x-auto">
+      <div className="overflow-x-auto overscroll-x-contain rounded-lg border max-sm:[&_button]:text-base max-sm:[&_input]:text-base">
         <Table>
           <TableHeader>
             <TableRow>
@@ -2461,12 +2503,12 @@ function EditorBill3({
                 <TableCell className="p-1 pt-3 font-medium">{i+1}</TableCell>
                 <TableCell className="p-1 min-w-[140px]">
                   <FormField control={control} name={`items.${i}.from`} render={({ field })=>(
-                    <FormItem><FormControl><Input placeholder="From" {...field} className="w-[180px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input placeholder="From" {...field} className="w-[220px] sm:w-[190px]" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
                 <TableCell className="p-1 min-w-[140px]">
                   <FormField control={control} name={`items.${i}.to`} render={({ field })=>(
-                    <FormItem><FormControl><Input placeholder="To" {...field} className="w-[180px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input placeholder="To" {...field} className="w-[220px] sm:w-[190px]" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
                 {(["dateFrom","dateTo"] as const).map((k)=>(
@@ -2476,7 +2518,7 @@ function EditorBill3({
                         <Popover>
                           <PopoverTrigger asChild>
                             <FormControl>
-                              <Button type="button" variant="outline" className={cn("w-full justify-start pl-3 text-left", !field.value && "text-muted-foreground")}>
+                              <Button type="button" variant="outline" className={cn("w-[190px] justify-start pl-3 text-left", !field.value && "text-muted-foreground")}>
                                 {field.value ? format(new Date(field.value), "PPP") : "Pick a date"}
                                 <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                               </Button>
@@ -2500,7 +2542,7 @@ function EditorBill3({
                 ) : null}
                 <TableCell className="p-1 min-w-[220px]">
                   <FormField control={control} name={`items.${i}.purpose`} render={({ field })=>(
-                    <FormItem><FormControl><Input placeholder="Purpose" {...field} className="w-[280px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input placeholder="Purpose" {...field} className="w-[320px] sm:w-[280px]" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
 
@@ -2511,7 +2553,7 @@ function EditorBill3({
                         <Input
                           type="number"
                           step="0.01"
-                          className="no-spinner text-right w-[130px]"
+                          className="no-spinner w-[145px] text-right text-base sm:w-[130px] sm:text-sm"
                           value={field.value ?? ""}
                           onChange={(e)=> field.onChange(e.target.value === "" ? "" : Number(e.target.value))}
                         />
@@ -2538,7 +2580,7 @@ function EditorBill3({
 
                 <TableCell className="p-1 min-w-[180px]">
                   <FormField control={control} name={`items.${i}.remarks`} render={({ field })=>(
-                    <FormItem><FormControl><Input placeholder="Remarks" {...field} className="w-[220px]" /></FormControl><FormMessage/></FormItem>
+                    <FormItem><FormControl><Input placeholder="Remarks" {...field} className="w-[260px] text-base sm:w-[220px] sm:text-sm" /></FormControl><FormMessage/></FormItem>
                   )}/>
                 </TableCell>
 

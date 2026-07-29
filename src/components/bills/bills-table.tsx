@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { StatusBadge } from "./status-badge";
 import { Eye } from "lucide-react";
 import { ClientDate } from "../client-date";
+import { departmentRowColor } from "@/lib/department-colors";
 
 interface BillsTableProps {
   bills: Bill[];
@@ -68,7 +69,11 @@ export function BillsTable({ bills, users, title, action, showDepartment = false
                 const submittedByName = userMap.get(bill.employeeId) || "Unknown";
 
                 return (
-                <TableRow key={bill.id}>
+                <TableRow
+                  key={bill.id}
+                  className={departmentRowColor(userDepartmentMap.get(bill.employeeId))}
+                  title={`Department: ${userDepartmentMap.get(bill.employeeId) || "Unassigned"}`}
+                >
                   <TableCell className="font-medium">
                     {bill.companyName}
                     <p

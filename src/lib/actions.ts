@@ -388,6 +388,7 @@ import {
   updateUserProfile,
   assertNoDuplicateTripsForEmployee,
   createSupervisorChangeRequest,
+  approveBill5BatchForGm,
 } from "./repo";
 
 import { updateUserPassword } from "./repo";
@@ -422,6 +423,17 @@ async function verifyPassword(password: string, stored: string | null | undefine
 }
 
 const SESSION_COOKIE_NAME = "office-flow-session";
+
+export async function bulkApproveBill5AsGm(billIds: string[]) {
+  const session = await getSession();
+  if (!session || session.user.role !== "supervisor" || !isGmIdentity(session.user)) {
+    throw new Error("Only the Bill-5 GM can perform bulk approval.");
+  }
+  const result = await approveBill5BatchForGm(billIds, session.user.id);
+  revalidatePath("/dashboard");
+  revalidatePath("/bills");
+  return result;
+}
 
 /** Resolve a supervisor-typed identifier to a real User.id.
  *  Accepts: exact User.id OR employeeCode (case-insensitive).
@@ -501,16 +513,22 @@ export async function register(
 ) {
   const name = (formData.get("name") as string)?.trim();
   const email = (formData.get("email") as string)?.trim().toLowerCase();
-  const role = formData.get("role") as Role;
+  let role = formData.get("role") as Role;
   const supervisorId = (formData.get("supervisorId") as string | undefined) || undefined;
 
-  const designation = ((formData.get("designation") as string) ?? "").trim();
+  let designation = ((formData.get("designation") as string) ?? "").trim();
   const department = ((formData.get("department") as string) ?? "").trim();
   const employeeCodeRaw = ((formData.get("employeeCode") as string) ?? "").trim();
   const employeeCode = employeeCodeRaw ? employeeCodeRaw.toUpperCase() : "";
 
   const password = (formData.get("password") as string) ?? "";
   const confirmPassword = (formData.get("confirmPassword") as string) ?? "";
+
+  // This account is the Bill-5 GM authority, regardless of the role selected in the form.
+  if (email === "sales@networld-bd.com") {
+    role = "supervisor";
+    designation = "GM";
+  }
 
   if (!name || !email || !role) return { error: "Name, email and role are required." };
   if (role === "employee" || role === "supervisor") {
@@ -679,7 +697,6 @@ async function parseBillForm(formData: FormData, currentUserRole: "employee" | "
   const itemsJSON = (formData.get("items") as string) || "[]";
   const existingBillId = (formData.get("billId") as string) || "";
   const formatType = (formData.get("formatType") as string) || "BILL1";
-  const gmBypassConfirmation = String(formData.get("gmBypassConfirmation") || "").trim().toLowerCase();
   
   const supervisorId = (formData.get("supervisorId") as string) || "";
   // accept either name (old forms still OK)
@@ -741,27 +758,26 @@ async function parseBillForm(formData: FormData, currentUserRole: "employee" | "
     items,
     supervisorId,
     formatType,
-    gmBypassConfirmation,
   };
 }
 
-async function enforceBill5GmRoute(parsed: { formatType: string; supervisorId: string; gmBypassConfirmation: string }, user: { id: string; name?: string | null; designation?: string | null }) {
+async function enforceBill5GmRoute(parsed: { formatType: string; supervisorId: string }, user: { id: string; email?: string | null; name?: string | null; designation?: string | null }) {
   if (parsed.formatType !== "BILL5") return;
   const isGm = isGmIdentity(user);
   if (isGm) return;
 
   const supervisors = await prisma.user.findMany({
     where: { role: "supervisor" },
-    select: { id: true, name: true, designation: true },
+    select: { id: true, email: true, name: true, designation: true },
   });
   if (parsed.supervisorId) {
     const targetIsSupervisor = supervisors.some((supervisor) => supervisor.id === parsed.supervisorId);
     if (!targetIsSupervisor) throw new Error("Please select a valid supervisor.");
     return;
   }
-  if (parsed.gmBypassConfirmation !== "sure") {
-    throw new Error('Type "sure" to submit this bill to Accounts without GM approval.');
-  }
+  const gm = supervisors.find((supervisor) => isGmIdentity(supervisor));
+  if (!gm) throw new Error("Bill-5 GM account sales@networld-bd.com is not available.");
+  parsed.supervisorId = gm.id;
 }
 
 /* ----------------------------- BILLS ----------------------------- */

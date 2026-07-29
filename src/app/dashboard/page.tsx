@@ -14,6 +14,8 @@ import { AccountsDashboard } from "@/components/dashboard/accounts-dashboard";
 import { ManagementDashboard } from "@/components/dashboard/management-dashboard";
 import type { SupervisorChangeRequest } from "@/components/supervisor/PendingSupervisorChangeRequests";
 import { employeeSubmittedAmount, isAccountsApproved } from "@/lib/bill-visibility";
+import { isGmIdentity } from "@/lib/bill-visibility";
+import { GmBill5Dashboard } from "@/components/dashboard/gm-bill5-dashboard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -66,6 +68,9 @@ export default async function DashboardPage() {
         </div>
       );
     case "supervisor":
+      if (isGmIdentity(user)) {
+        return <div className="container mx-auto"><GmBill5Dashboard user={user} bills={bills} users={users} /></div>;
+      }
       return (
         <div className="container mx-auto">
           <SupervisorDashboard

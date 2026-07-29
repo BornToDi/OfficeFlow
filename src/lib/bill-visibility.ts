@@ -9,7 +9,10 @@ export interface SupervisorEditChange {
   after: string;
 }
 
-export function isGmIdentity(user: { name?: string | null; designation?: string | null }) {
+export const BILL5_GM_EMAIL = "sales@networld-bd.com";
+
+export function isGmIdentity(user: { email?: string | null; name?: string | null; designation?: string | null }) {
+  if (String(user.email || "").trim().toLowerCase() === BILL5_GM_EMAIL) return true;
   const identity = String(user.designation || user.name || "")
     .trim()
     .toLowerCase()

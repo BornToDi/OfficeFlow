@@ -170,7 +170,6 @@ async function approveOrForward(formData: FormData) {
 
   const action = String(formData.get("action") || "approve");
   const nextSupervisorId = (formData.get("nextSupervisorId") as string) || "";
-  const gmBypassConfirmation = String(formData.get("gmBypassConfirmation") || "").trim().toLowerCase();
   const currentBill = await getBillById(billId);
   if (!currentBill) throw new Error("Bill not found.");
   const currentIsBill5 = currentBill.items.some((item) => item.transport === "__BILL5__");
@@ -186,11 +185,16 @@ async function approveOrForward(formData: FormData) {
       if (nextSupervisorId && !supervisorsNow.some((supervisor) => supervisor.id === nextSupervisorId)) {
         throw new Error("Please select a valid supervisor.");
       }
-      if (!nextSupervisorId && gmBypassConfirmation !== "sure") {
-        throw new Error('Type "sure" to submit this bill to Accounts without GM approval.');
+      const gm = supervisorsNow.find((supervisor) => isGmIdentity(supervisor));
+      if (!nextSupervisorId && !gm) throw new Error("Bill-5 GM account is not available.");
+      if (!nextSupervisorId && gm) {
+        await updateBillStatus(billId, undefined, sessionNow.user.id, "Forwarded to GM", gm.id);
+        revalidatePath(`/bills/${billId}`);
+        revalidatePath("/dashboard");
+        return;
       }
     }
-    if (nextSupervisorId) {
+    if (nextSupervisorId && !sessionUserIsGm) {
       // forward to another supervisor
       await updateBillStatus(billId, undefined, sessionNow.user.id, "Forwarded", nextSupervisorId);
     } else {
