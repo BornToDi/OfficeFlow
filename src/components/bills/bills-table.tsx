@@ -30,7 +30,6 @@ function shortBillId(id: string) {
 
 export function BillsTable({ bills, users, title, action, showDepartment = false }: BillsTableProps) {
   const userMap = new Map(users.map((user) => [user.id, user.name]));
-  const userRoleMap = new Map(users.map((user) => [user.id, user.role]));
   const userDepartmentMap = new Map(users.map((user) => [user.id, user.department ?? "N/A"]));
   const pageSize = 10;
   const [page, setPage] = useState(1);
@@ -66,16 +65,7 @@ export function BillsTable({ bills, users, title, action, showDepartment = false
             {(bills.length || 0) > 0 ? (
               // slice for pagination
               bills.slice((page - 1) * pageSize, page * pageSize).map((bill) => {
-                const supervisorSubmission = [...(bill.history ?? [])]
-                  .reverse()
-                  .find(
-                    (entry) =>
-                      entry.status === "SUBMITTED" &&
-                      !!entry.actorId &&
-                      userRoleMap.get(entry.actorId) === "supervisor"
-                  );
-                const submittedById = supervisorSubmission?.actorId ?? bill.employeeId;
-                const submittedByName = userMap.get(submittedById || "") || "Unknown";
+                const submittedByName = userMap.get(bill.employeeId) || "Unknown";
 
                 return (
                 <TableRow key={bill.id}>
@@ -99,9 +89,6 @@ export function BillsTable({ bills, users, title, action, showDepartment = false
                   </TableCell>
                   <TableCell>
                     {submittedByName}
-                    {supervisorSubmission && (
-                      <p className="text-xs font-medium text-blue-600">Submitted as Supervisor</p>
-                    )}
                   </TableCell>
                   {showDepartment && <TableCell>{userDepartmentMap.get(bill.employeeId) || "N/A"}</TableCell>}
                   <TableCell><ClientDate dateString={bill.createdAt} format="date" /></TableCell>
