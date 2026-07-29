@@ -1139,7 +1139,15 @@ export function BillForm(props: Props) {
       b.items.forEach((it) => {
         try {
           const parsed = decB5Child(it.purpose as string);
-          const key = parsed.parentName || parsed.incident || String(it.date);
+          // A Bill-5 employee can have multiple parent rows with the same name.
+          // Keep rows with different date ranges/incidents separate; grouping by
+          // name alone caused an amount-only edit to overwrite every row date.
+          const key = [
+            parsed.parentName || "",
+            safeDate(it.date).toISOString(),
+            it.to ? safeDate(it.to).toISOString() : safeDate(it.date).toISOString(),
+            parsed.incident || "",
+          ].join("|");
           groups[key] ??= { name: parsed.parentName || "", dateFrom: safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date), incident: parsed.incident, children: [] };
           groups[key].children.push({ purpose: parsed.purpose, bankName: parsed.bankName, time: parsed.time || "", dateFrom: parsed.dateFrom || "", dateTo: parsed.dateTo || "", vehicle: parsed.vehicle, local: parsed.local, trip: parsed.trip, food: parsed.food, hotel: parsed.hotel, others: parsed.others, advance: parsed.advance, remarks: parsed.remarks });
         } catch {

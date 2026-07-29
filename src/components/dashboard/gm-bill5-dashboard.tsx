@@ -26,6 +26,7 @@ export function GmBill5Dashboard({ user, bills, users }: { user: User; bills: Bi
     return departmentMatch && monthMatch;
   }), [bill5, department, month, userMap]);
   const eligible = filtered.filter((bill) => bill.status === "SUBMITTED" && bill.supervisorId === user.id);
+  const allEligibleSelected = eligible.length > 0 && eligible.every((bill) => selected.has(bill.id));
 
   const employeeTotals = useMemo(() => aggregate(filtered, (bill) => userMap.get(bill.employeeId)?.name || "Unknown"), [filtered, userMap]);
   const departmentTotals = useMemo(() => aggregate(filtered, (bill) => userMap.get(bill.employeeId)?.department || "Unassigned"), [filtered, userMap]);
@@ -59,7 +60,18 @@ export function GmBill5Dashboard({ user, bills, users }: { user: User; bills: Bi
     <div className="flex flex-wrap gap-3 rounded-lg border bg-card p-4">
       <select className="rounded-md border bg-background px-3 py-2" value={month} onChange={(e) => { setMonth(e.target.value); setSelected(new Set()); }}><option value="all">All months</option>{months.map((value) => <option key={value} value={value}>{value}</option>)}</select>
       <select className="rounded-md border bg-background px-3 py-2" value={department} onChange={(e) => { setDepartment(e.target.value); setSelected(new Set()); }}><option value="all">All departments</option>{departments.map((value) => <option key={value} value={value}>{value}</option>)}</select>
-      <Button variant="outline" disabled={!eligible.length} onClick={() => setSelected(new Set(eligible.map((bill) => bill.id)))}>Select all filtered</Button>
+      <Button
+        variant="outline"
+        disabled={!eligible.length}
+        onClick={() => setSelected((current) => {
+          const next = new Set(current);
+          if (allEligibleSelected) eligible.forEach((bill) => next.delete(bill.id));
+          else eligible.forEach((bill) => next.add(bill.id));
+          return next;
+        })}
+      >
+        {allEligibleSelected ? "Unselect all filtered" : "Select all filtered"}
+      </Button>
       <Button disabled={pending || !selected.size} onClick={() => approve([...selected])}>Approve selected ({selected.size}) → Accounts</Button>
       {department !== "all" && <Button disabled={pending || !eligible.length} onClick={() => approve(eligible.map((bill) => bill.id))}>Approve entire department ({eligible.length})</Button>}
     </div>

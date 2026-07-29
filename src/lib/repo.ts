@@ -764,7 +764,7 @@ export async function approveBill5BatchForGm(billIds: string[], gmId: string) {
         billId,
         actorId: gmId,
         status: "APPROVED_BY_SUPERVISOR" as const,
-        comment: `Bulk approved by Bill-5 GM (${uniqueIds.length} bill${uniqueIds.length === 1 ? "" : "s"}) and sent to Accounts`,
+        comment: "Approved by GM and sent to Accounts",
       })),
     });
     return { count: uniqueIds.length };
