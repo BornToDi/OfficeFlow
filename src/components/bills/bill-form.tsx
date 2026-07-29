@@ -1402,10 +1402,11 @@ export function BillForm(props: Props) {
     if (!submittedBillId || downloadedSubmittedBillId.current === submittedBillId) return;
     downloadedSubmittedBillId.current = submittedBillId;
 
-    const isEmployeeSubmission = "user" in props && (props.user as any)?.role === "employee";
+    const currentUserId = "user" in props ? String((props.user as any)?.id || "") : "";
+    const isBillOwnerSubmission = Boolean(currentUserId && currentUserId === String(effectiveEmployeeId));
     void (async () => {
       let pdfDownloaded = false;
-      if (isEmployeeSubmission) {
+      if (isBillOwnerSubmission) {
         try {
           await downloadBillPdf(submittedBillId);
           pdfDownloaded = true;
@@ -1422,7 +1423,7 @@ export function BillForm(props: Props) {
         router.replace("/dashboard");
       }
     })();
-  }, [submitState, router]);
+  }, [submitState, router, effectiveEmployeeId]);
 
   /* ---------- submit payload ---------- */
   const toServerFD = (data: BillFormValues) => {

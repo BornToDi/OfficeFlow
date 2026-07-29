@@ -131,5 +131,16 @@ export async function downloadBillPdf(billId: string) {
   doc.text("Amount in words:", 14, finalY + 8);
   doc.setFont("helvetica", "normal");
   doc.text(doc.splitTextToSize(bill.amountInWords || dash, 265), 14, finalY + 13);
-  doc.save(`bill-${bill.id.slice(-8)}.pdf`);
+  const blob = doc.output("blob");
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = `bill-${bill.id.slice(-8)}.pdf`;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Keep the URL alive long enough for slower mobile browsers (including
+  // Safari on iPhone) to take ownership of the download stream.
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }
