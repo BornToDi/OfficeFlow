@@ -176,11 +176,13 @@ async function approveOrForward(formData: FormData) {
   const currentIsBill5 = currentBill.items.some((item) => item.transport === "__BILL5__");
 
   if (action === "approve") {
-    const supervisorsNow = currentIsBill5 ? await listSupervisors() : [];
+    const isBill5SupervisorApproval =
+      currentIsBill5 && sessionNow.user.role === "supervisor";
+    const supervisorsNow = isBill5SupervisorApproval ? await listSupervisors() : [];
     const sessionUserIsGm =
       isGmIdentity(sessionNow.user) ||
       supervisorsNow.some((supervisor) => supervisor.id === sessionNow.user.id && isGmIdentity(supervisor));
-    if (currentIsBill5 && !sessionUserIsGm) {
+    if (isBill5SupervisorApproval && !sessionUserIsGm) {
       if (nextSupervisorId && !supervisorsNow.some((supervisor) => supervisor.id === nextSupervisorId)) {
         throw new Error("Please select a valid supervisor.");
       }
