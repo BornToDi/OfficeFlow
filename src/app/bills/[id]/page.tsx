@@ -159,7 +159,6 @@ export default async function BillDetail({
     (h.comment ?? "").toLowerCase().includes("payment requested from employee")
   );
   const billId = dbBill.id;
-  const billStatus = dbBill.status;
 
   /* -------------------------- server actions -------------------------- */
 
@@ -172,12 +171,15 @@ async function approveOrForward(formData: FormData) {
   const action = String(formData.get("action") || "approve");
   const nextSupervisorId = (formData.get("nextSupervisorId") as string) || "";
   const gmBypassConfirmation = String(formData.get("gmBypassConfirmation") || "").trim().toLowerCase();
+  const currentBill = await getBillById(billId);
+  if (!currentBill) throw new Error("Bill not found.");
+  const currentIsBill5 = currentBill.items.some((item) => item.transport === "__BILL5__");
 
   if (action === "approve") {
-    const supervisorsNow = isBill5 ? await listSupervisors() : [];
+    const supervisorsNow = currentIsBill5 ? await listSupervisors() : [];
     const sessionUserIsGm =
       String(sessionNow.user.designation || sessionNow.user.name).trim().toLowerCase() === "gm";
-    if (isBill5 && !sessionUserIsGm) {
+    if (currentIsBill5 && !sessionUserIsGm) {
       if (nextSupervisorId && !supervisorsNow.some((supervisor) => supervisor.id === nextSupervisorId)) {
         throw new Error("Please select a valid supervisor.");
       }
@@ -190,7 +192,7 @@ async function approveOrForward(formData: FormData) {
       await updateBillStatus(billId, undefined, sessionNow.user.id, "Forwarded", nextSupervisorId);
     } else {
       // normal approve to next stage
-      const next = nextStatusForRole(billStatus, sessionNow.user.role); // your existing helper
+      const next = nextStatusForRole(currentBill.status, sessionNow.user.role);
       await updateBillStatus(billId, next, sessionNow.user.id, "Approved");
     }
   } else if (action === "reject") {

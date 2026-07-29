@@ -691,7 +691,9 @@ export async function updateBillStatus(
         billId,
         actorId: actorId ?? null,
         status: statusToSet as any,
-        comment: comment ?? `Forwarded to ${target.name ?? nextSupervisorId}`,
+        // Always persist the recipient's readable name. Callers previously
+        // passed generic comments such as "Forwarded", which lost this detail.
+        comment: `Forwarded to ${target.name}${target.email ? ` (${target.email})` : ""}`,
       },
     });
 
@@ -1036,8 +1038,14 @@ export async function getBillsForRole(user: { id: string; role: Role }) {
       return prisma.bill.findMany({
         where: {
           OR: [
-            { employee: { supervisorId: user.id } }, // my reports
-            { employeeId: user.id },                 // my own bills
+            { employeeId: user.id }, // always show my own bills, including drafts
+            {
+              status: { not: "DRAFT" },
+              OR: [
+                { employee: { supervisorId: user.id } },
+                { supervisorId: user.id },
+              ],
+            },
           ],
         },
         orderBy: { createdAt: "desc" },
@@ -1148,7 +1156,16 @@ function roleWhere(user: { id: string; role: Role }) {
   if (user.role === "employee") return { employeeId: user.id };
   if (user.role === "supervisor") {
     return {
-      OR: [{ employee: { supervisorId: user.id } }, { employeeId: user.id }],
+      OR: [
+        { employeeId: user.id },
+        {
+          status: { not: "DRAFT" },
+          OR: [
+            { employee: { supervisorId: user.id } },
+            { supervisorId: user.id },
+          ],
+        },
+      ],
     };
   }
   // accounts/followup/management -> all
@@ -1172,12 +1189,17 @@ export async function getBillsForRolePage(
   if (user.role === "employee") {
     where = { employeeId: user.id };
   } else if (user.role === "supervisor") {
-    // Show all bills relevant to this supervisor:  All Employee’s bills, forwarded to me, and my own
+    // Employee drafts are private; supervisors still see their own drafts.
     where = {
       OR: [
-        { employee: { supervisorId: user.id } }, // my  All Employee (default supervisor route)
-        { supervisorId: user.id },               // explicitly forwarded to me
-        { employeeId: user.id },                 // my own bills
+        { employeeId: user.id },
+        {
+          status: { not: "DRAFT" },
+          OR: [
+            { employee: { supervisorId: user.id } },
+            { supervisorId: user.id },
+          ],
+        },
       ],
     };
   } else if (user.role === "accounts") {

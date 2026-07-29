@@ -7,7 +7,18 @@ export async function getBillsForReports(user: { id: string; role: Role }) {
     user.role === "employee"
       ? { employeeId: user.id }
       : user.role === "supervisor"
-      ? { OR: [{ employee: { supervisorId: user.id } }, { employeeId: user.id }] }
+      ? {
+          OR: [
+            { employeeId: user.id },
+            {
+              status: { not: "DRAFT" as const },
+              OR: [
+                { employee: { supervisorId: user.id } },
+                { supervisorId: user.id },
+              ],
+            },
+          ],
+        }
       : {}; // accounts & management see all
 
   const bills = await prisma.bill.findMany({

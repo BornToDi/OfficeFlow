@@ -40,22 +40,25 @@ export function SupervisorDashboard({
   });
 
   // All bills associated with the supervisor's team, including their own, for summary stats.
-  const teamAndOwnBills = bills.filter((bill) =>
-    bill.status !== "SUBMITTED" && (
+  const teamAndOwnBills = bills.filter((bill) => {
+    const isOwnBill = String(bill.employeeId) === String(user.id);
+    if (bill.status === "DRAFT" && !isOwnBill) return false;
+    return bill.status !== "SUBMITTED" && (
       teamMemberIds.includes(String(bill.employeeId)) ||
-      String(bill.employeeId) === String(user.id) ||
+      isOwnBill ||
       String(bill.supervisorId) === String(user.id)
-    )
-  );
+    );
+  });
   const filteredTeamBills = useMemo(() => {
     if (billScope === "mine") {
       return bills.filter(
         (bill) =>
           String(bill.employeeId) === String(user.id) ||
-          (bill.history ?? []).some(
-            (entry) =>
-              entry.status === "SUBMITTED" && String(entry.actorId) === String(user.id)
-          )
+          (bill.status !== "DRAFT" &&
+            (bill.history ?? []).some(
+              (entry) =>
+                entry.status === "SUBMITTED" && String(entry.actorId) === String(user.id)
+            ))
       );
     }
     return teamAndOwnBills;
