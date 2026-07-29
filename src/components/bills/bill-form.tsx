@@ -1511,8 +1511,11 @@ export function BillForm(props: Props) {
     } else if (formatType === "BILL5") {
       // BILL5 (combined) — flatten parent->children into individual server rows
       const flatRows: any[] = [];
-      const attachments: File[] = [];
-      (data.items as RowB5[]).forEach((parent) => {
+      const dateRowsEdited: boolean[] = [];
+      (data.items as RowB5[]).forEach((parent, parentIndex) => {
+        const parentDateEdited =
+          form.getFieldState(`items.${parentIndex}.dateFrom` as any).isDirty ||
+          form.getFieldState(`items.${parentIndex}.dateTo` as any).isDirty;
         (parent.children || []).forEach((child) => {
           const packed = encB5Child(parent, child, bill5SelectedColumns);
           const sum = (Number(child.local)||0)+(Number(child.trip)||0)+(Number(child.food)||0)+(Number(child.hotel)||0)+(Number(child.others)||0);
@@ -1525,10 +1528,12 @@ export function BillForm(props: Props) {
             purpose: packed,
             amount: Number(net || 0),
           });
+          dateRowsEdited.push(parentDateEdited);
         });
       });
       // append items
       fd.append("items", JSON.stringify(flatRows));
+      fd.append("bill5DateRowsEdited", JSON.stringify(dateRowsEdited));
 
       // append attachments in same flattened order
       let idx = 0;

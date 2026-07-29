@@ -697,6 +697,11 @@ async function parseBillForm(formData: FormData, currentUserRole: "employee" | "
   const itemsJSON = (formData.get("items") as string) || "[]";
   const existingBillId = (formData.get("billId") as string) || "";
   const formatType = (formData.get("formatType") as string) || "BILL1";
+  let bill5DateRowsEdited: boolean[] = [];
+  try {
+    const parsedFlags = JSON.parse(String(formData.get("bill5DateRowsEdited") || "[]"));
+    if (Array.isArray(parsedFlags)) bill5DateRowsEdited = parsedFlags.map(Boolean);
+  } catch {}
   
   const supervisorId = (formData.get("supervisorId") as string) || "";
   // accept either name (old forms still OK)
@@ -758,7 +763,20 @@ async function parseBillForm(formData: FormData, currentUserRole: "employee" | "
     items,
     supervisorId,
     formatType,
+    bill5DateRowsEdited,
   };
+}
+
+function preserveUneditedBill5Dates(existingBill: any, parsed: any) {
+  if (parsed.formatType !== "BILL5") return;
+  parsed.items.forEach((item: any, index: number) => {
+    if (parsed.bill5DateRowsEdited[index]) return;
+    const existing = existingBill?.items?.[index];
+    if (!existing) return;
+    item.date = new Date(existing.date).toISOString();
+    item.from = existing.from ?? "";
+    item.to = existing.to ?? "";
+  });
 }
 
 async function enforceBill5GmRoute(parsed: { formatType: string; supervisorId: string }, user: { id: string; email?: string | null; name?: string | null; designation?: string | null }) {
@@ -818,6 +836,7 @@ export async function saveDraft(
       parsed.items.forEach((item: any, index: number) => {
         if (!item.attachmentUrl) item.attachmentUrl = existingBill?.items[index]?.attachmentUrl ?? null;
       });
+      preserveUneditedBill5Dates(existingBill, parsed);
       const canPreserveSubmittedStatus =
         session.user.role === "supervisor" &&
         existingBill?.status === "SUBMITTED" &&
@@ -900,6 +919,7 @@ if (parsed.existingBillId) {
   parsed.items.forEach((item: any, index: number) => {
     if (!item.attachmentUrl) item.attachmentUrl = existingBill?.items[index]?.attachmentUrl ?? null;
   });
+  preserveUneditedBill5Dates(existingBill, parsed);
   const canPreserveSubmittedStatus =
     session.user.role === "supervisor" &&
     existingBill?.status === "SUBMITTED" &&
