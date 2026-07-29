@@ -396,6 +396,7 @@ import type { Role, BillStatus } from "./types";
 import {
   buildSupervisorEditChanges,
   employeeAmountMarker,
+  isGmIdentity,
   supervisorEditDiffMarker,
 } from "./bill-visibility";
 import { prisma } from "./db";
@@ -746,7 +747,7 @@ async function parseBillForm(formData: FormData, currentUserRole: "employee" | "
 
 async function enforceBill5GmRoute(parsed: { formatType: string; supervisorId: string; gmBypassConfirmation: string }, user: { id: string; name?: string | null; designation?: string | null }) {
   if (parsed.formatType !== "BILL5") return;
-  const isGm = String(user.designation || user.name || "").trim().toLowerCase() === "gm";
+  const isGm = isGmIdentity(user);
   if (isGm) return;
 
   const supervisors = await prisma.user.findMany({

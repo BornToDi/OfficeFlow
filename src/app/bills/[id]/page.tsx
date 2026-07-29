@@ -16,6 +16,7 @@ import { Bill5ApprovalForm } from "@/components/bills/Bill5ApprovalForm";
 import {
   cleanBillHistoryComment,
   employeeSubmittedAmount,
+  isGmIdentity,
   isAccountsApproved,
   parseSupervisorEditChanges,
 } from "@/lib/bill-visibility";
@@ -150,10 +151,9 @@ export default async function BillDetail({
   const supervisors = await listSupervisors();
   const otherSupervisors = supervisors.filter((supervisor) => supervisor.id !== session.user.id);
   const gmSupervisor = supervisors.find((supervisor) =>
-    String(supervisor.designation || supervisor.name).trim().toLowerCase() === "gm"
+    isGmIdentity(supervisor)
   );
-  const isCurrentUserGm =
-    String(session.user.designation || session.user.name).trim().toLowerCase() === "gm";
+  const isCurrentUserGm = isGmIdentity(session.user) || gmSupervisor?.id === session.user.id;
 
   const hasPaymentRequest = dbBill.history.some((h) =>
     (h.comment ?? "").toLowerCase().includes("payment requested from employee")
@@ -178,7 +178,8 @@ async function approveOrForward(formData: FormData) {
   if (action === "approve") {
     const supervisorsNow = currentIsBill5 ? await listSupervisors() : [];
     const sessionUserIsGm =
-      String(sessionNow.user.designation || sessionNow.user.name).trim().toLowerCase() === "gm";
+      isGmIdentity(sessionNow.user) ||
+      supervisorsNow.some((supervisor) => supervisor.id === sessionNow.user.id && isGmIdentity(supervisor));
     if (currentIsBill5 && !sessionUserIsGm) {
       if (nextSupervisorId && !supervisorsNow.some((supervisor) => supervisor.id === nextSupervisorId)) {
         throw new Error("Please select a valid supervisor.");
@@ -192,7 +193,7 @@ async function approveOrForward(formData: FormData) {
       await updateBillStatus(billId, undefined, sessionNow.user.id, "Forwarded", nextSupervisorId);
     } else {
       // normal approve to next stage
-      const next = nextStatusForRole(currentBill.status, sessionNow.user.role);
+      const next = nextStatusForRole(sessionNow.user.role, currentBill.status);
       await updateBillStatus(billId, next, sessionNow.user.id, "Approved");
     }
   } else if (action === "reject") {

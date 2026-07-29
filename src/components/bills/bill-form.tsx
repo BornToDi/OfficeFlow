@@ -13,6 +13,7 @@ import { downloadBillPdf } from "@/lib/download-bill-pdf";
 
 import { submitBill, saveDraft } from "@/lib/actions";
 import { cn, numberToWords } from "@/lib/utils";
+import { isGmIdentity } from "@/lib/bill-visibility";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1547,7 +1548,7 @@ export function BillForm(props: Props) {
       return;
     }
     const currentUserIsGm = isSupervisorUser &&
-      String(("user" in props ? (props.user as any)?.designation || (props.user as any)?.name : "")).trim().toLowerCase() === "gm";
+      isGmIdentity("user" in props && props.user ? props.user : {});
     if (formatType === "BILL5" && isSupervisorUser && !currentUserIsGm && !(d as any).supervisorId) {
       const confirmation = window.prompt(
         'Are you sure you want to submit this bill to Accounts without GM approval?\n\nType "sure" to continue.'

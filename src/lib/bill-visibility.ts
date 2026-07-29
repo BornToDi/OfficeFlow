@@ -9,6 +9,16 @@ export interface SupervisorEditChange {
   after: string;
 }
 
+export function isGmIdentity(user: { name?: string | null; designation?: string | null }) {
+  const identity = String(user.designation || user.name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[._-]+/g, " ")
+    .replace(/\s+/g, " ");
+
+  return identity === "gm" || identity === "general manager";
+}
+
 export function employeeAmountMarker(amount: number) {
   return `[${EMPLOYEE_AMOUNT_MARKER}${Number(amount)}]`;
 }
