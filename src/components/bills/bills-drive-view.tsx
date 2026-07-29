@@ -3,7 +3,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Input } from "@/components/ui/input";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ArrowUpRight, FileText, Hash, UserRound } from "lucide-react";
 
@@ -55,7 +55,8 @@ type PlainBill = {
 interface Props {
   bills: PlainBill[];
   users: PlainUser[];
-  isSupervisor: boolean;
+  initialMonth: string;
+  initialWeek?: number;
 }
 
 const statusOptions: Array<{ value: "ALL" | Status; label: string }> = [
@@ -186,12 +187,22 @@ function ExpandedBillDetails({ bill, ownerName }: { bill: PlainBill; ownerName: 
   );
 }
 
-export function BillsDriveView({ bills, users, isSupervisor }: Props) {
-  const [q, setQ] = useState("");             // free text: name/company/address/email
-  const [empCodeQ, setEmpCodeQ] = useState(""); // ⬅️ employee code query
-  const [on, setOn] = useState("");           // date filter: YYYY-MM-DD
+export function BillsDriveView({ bills, users, initialMonth, initialWeek }: Props) {
   const [status, setStatus] = useState<"ALL" | Status>("ALL");
   const [openId, setOpenId] = useState<string | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const updatePeriod = (month: string, week?: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("page");
+    if (month) params.set("month", month);
+    else params.delete("month");
+    if (month && week) params.set("week", week);
+    else params.delete("week");
+    router.push(`${pathname}${params.size ? `?${params.toString()}` : ""}`);
+  };
 
   const nameById = useMemo(() => {
     const m = new Map<string, string>();
@@ -200,41 +211,11 @@ export function BillsDriveView({ bills, users, isSupervisor }: Props) {
   }, [users]);
 
   const filtered = useMemo(() => {
-    const query = q.trim().toLowerCase();
-    const codeQ = empCodeQ.trim().toLowerCase();
-    const onDay = on.trim(); // YYYY-MM-DD
-
     return bills.filter((b) => {
       if (status !== "ALL" && b.status !== status) return false;
-
-      // free text match
-      if (query) {
-        const hay = [
-          b.companyName,
-          b.companyAddress,
-          nameById.get(b.employeeId) ?? b.employee?.name ?? "",
-          b.employee?.email ?? "",
-        ]
-          .join(" ")
-          .toLowerCase();
-        if (!hay.includes(query)) return false;
-      }
-
-      // employee code match
-      if (codeQ) {
-        const code = (b.employee?.employeeCode ?? "").toLowerCase();
-        if (!code.includes(codeQ)) return false;
-      }
-
-      // date match
-      if (onDay) {
-        const hasOnDay = (b.items || []).some((it) => (it.date || "").slice(0, 10) === onDay);
-        if (!hasOnDay) return false;
-      }
-
       return true;
     });
-  }, [bills, q, empCodeQ, on, status, nameById]);
+  }, [bills, status]);
 
   return (
     <div className="space-y-4">
@@ -242,24 +223,28 @@ export function BillsDriveView({ bills, users, isSupervisor }: Props) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-semibold">Bills</h1>
 
-        <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr),180px,170px,auto]">
-          <Input
-            placeholder={isSupervisor ? "Search name/company/address/email…" : "Search bills…"}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
+        <div className="grid gap-2 sm:grid-cols-[180px,150px,auto]">
+          <input
+            type="month"
+            value={initialMonth}
+            onChange={(e) => updatePeriod(e.target.value)}
+            aria-label="Filter by month"
+            className="h-9 rounded-md border bg-background px-2 text-sm"
           />
-          <Input
-            placeholder="Employee Code…"
-            value={empCodeQ}
-            onChange={(e) => setEmpCodeQ(e.target.value)}
-            title="Filter by employee code"
-          />
-          <Input
-            type="date"
-            value={on}
-            onChange={(e) => setOn(e.target.value)}
-            title="Filter bills having any line-item on this date"
-          />
+          <select
+            value={initialWeek ?? ""}
+            disabled={!initialMonth}
+            onChange={(e) => updatePeriod(initialMonth, e.target.value)}
+            aria-label="Filter by week of month"
+            className="h-9 rounded-md border bg-background px-2 text-sm disabled:opacity-50"
+          >
+            <option value="">All weeks</option>
+            <option value="1">Week 1 (1–7)</option>
+            <option value="2">Week 2 (8–14)</option>
+            <option value="3">Week 3 (15–21)</option>
+            <option value="4">Week 4 (22–28)</option>
+            <option value="5">Week 5 (29–end)</option>
+          </select>
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value as any)}

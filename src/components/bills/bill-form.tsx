@@ -9,6 +9,7 @@ import * as z from "zod";
 import { format } from "date-fns";
 import { Calendar as CalendarIcon, PlusCircle, Trash2, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { downloadBillPdf } from "@/lib/download-bill-pdf";
 
 import { submitBill, saveDraft } from "@/lib/actions";
 import { cn, numberToWords } from "@/lib/utils";
@@ -1035,6 +1036,7 @@ export function BillForm(props: Props) {
   const [draftState,  draftAction]  = useActionState(saveDraft, undefined);
   const [isPending, startTransition] = useTransition();
   const lastDraftToastBillId = useRef<string | undefined>(undefined);
+  const downloadedSubmittedBillId = useRef<string | undefined>(undefined);
 
   const initialFormat = props.bill ? detectFormat(props.bill.items) : "BILL1";
   const [formatType, setFormatType] = useState<BillFormat>(initialFormat);
@@ -1384,15 +1386,32 @@ export function BillForm(props: Props) {
 
   /* ---------- after successful submit ---------- */
   useEffect(() => {
-    if (submitState && !(submitState as any)?.error) {
-      if (typeof window !== "undefined") {
-        window.alert("Submitted bill successfully");
+    const submittedBillId = (submitState as any)?.success
+      ? String((submitState as any)?.billId || "")
+      : "";
+    if (!submittedBillId || downloadedSubmittedBillId.current === submittedBillId) return;
+    downloadedSubmittedBillId.current = submittedBillId;
+
+    const isEmployeeSubmission = "user" in props && (props.user as any)?.role === "employee";
+    void (async () => {
+      let pdfDownloaded = false;
+      if (isEmployeeSubmission) {
+        try {
+          await downloadBillPdf(submittedBillId);
+          pdfDownloaded = true;
+        } catch (error) {
+          console.error("Automatic bill PDF download failed:", error);
+        }
       }
-      const t = setTimeout(() => {
+      if (typeof window !== "undefined") {
+        window.alert(
+          pdfDownloaded
+            ? "Submitted bill successfully. Your PDF download has started."
+            : "Submitted bill successfully"
+        );
         router.replace("/dashboard");
-      }, 300);
-      return () => clearTimeout(t);
-    }
+      }
+    })();
   }, [submitState, router]);
 
   /* ---------- submit payload ---------- */
@@ -1787,9 +1806,7 @@ export function BillForm(props: Props) {
                 <FormControl>
                   <select {...field} className="w-full rounded-md border bg-background px-3 py-2 text-sm">
                     <option value="">Default — send to Accounts</option>
-                    {supervisors
-                      .filter((s) => formatType !== "BILL5" || String((s as any).designation || s.name).trim().toLowerCase() === "gm")
-                      .map((s) => (
+                    {supervisors.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}{s.email ? ` (${s.email})` : ""}
                       </option>

@@ -175,14 +175,11 @@ async function approveOrForward(formData: FormData) {
 
   if (action === "approve") {
     const supervisorsNow = isBill5 ? await listSupervisors() : [];
-    const gmNow = supervisorsNow.find((supervisor) =>
-      String(supervisor.designation || supervisor.name).trim().toLowerCase() === "gm"
-    );
     const sessionUserIsGm =
       String(sessionNow.user.designation || sessionNow.user.name).trim().toLowerCase() === "gm";
     if (isBill5 && !sessionUserIsGm) {
-      if (nextSupervisorId && nextSupervisorId !== gmNow?.id) {
-        throw new Error("This bill must be forwarded to the GM.");
+      if (nextSupervisorId && !supervisorsNow.some((supervisor) => supervisor.id === nextSupervisorId)) {
+        throw new Error("Please select a valid supervisor.");
       }
       if (!nextSupervisorId && gmBypassConfirmation !== "sure") {
         throw new Error('Type "sure" to submit this bill to Accounts without GM approval.');

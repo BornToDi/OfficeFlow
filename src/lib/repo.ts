@@ -1162,7 +1162,7 @@ export async function getBillsForRolePage(
   user: { id: string; role: Role },
   page = 1,
   pageSize = 10,
-  search = ""
+  period?: { month?: string; week?: number }
 ): Promise<PageResult<any>> {
   const safePage = Math.max(1, Number(page || 1));
   const take = Math.max(1, Number(pageSize || 10));
@@ -1188,21 +1188,22 @@ export async function getBillsForRolePage(
     where = { status: "APPROVED_BY_ACCOUNTS" };
   }
 
-  const query = search.trim();
-  if (user.role === "supervisor" && query) {
-    const supervisorScope = where;
+  const monthMatch = period?.month?.match(/^(\d{4})-(\d{2})$/);
+  const week = Number(period?.week);
+  if (monthMatch && Number(monthMatch[2]) >= 1 && Number(monthMatch[2]) <= 12) {
+    const year = Number(monthMatch[1]);
+    const monthIndex = Number(monthMatch[2]) - 1;
+    const validWeek = Number.isInteger(week) && week >= 1 && week <= 5 ? week : null;
+    const startDay = validWeek ? (validWeek - 1) * 7 + 1 : 1;
+    const rangeStart = new Date(Date.UTC(year, monthIndex, startDay));
+    const nextMonth = new Date(Date.UTC(year, monthIndex + 1, 1));
+    const weekEnd = new Date(Date.UTC(year, monthIndex, startDay + 7));
+    const rangeEnd = validWeek && weekEnd < nextMonth ? weekEnd : nextMonth;
+    const roleScope = where;
     where = {
       AND: [
-        supervisorScope,
-        {
-          OR: [
-            { employeeId: { contains: query } },
-            { employee: { employeeCode: { contains: query } } },
-            { employee: { email: { contains: query } } },
-            // Bill 5 incident numbers are packed into the item purpose JSON.
-            { items: { some: { purpose: { contains: query } } } },
-          ],
-        },
+        roleScope,
+        { items: { some: { date: { gte: rangeStart, lt: rangeEnd } } } },
       ],
     };
   }

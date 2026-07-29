@@ -28,9 +28,7 @@ export function Bill5ApprovalForm({ action, supervisors, gmSupervisor, isBill5, 
         <label className="text-sm font-medium">Forward to:</label>
         <select name="nextSupervisorId" value={nextSupervisorId} onChange={(event) => { setNextSupervisorId(event.target.value); setConfirmation(""); }} className="rounded-md border bg-white px-3 py-2 text-sm">
           <option value="">Send directly to Accounts</option>
-          {isBill5 && gmSupervisor && !isCurrentUserGm ? (
-            <option value={gmSupervisor.id}>GM — {gmSupervisor.name}</option>
-          ) : supervisors.map((supervisor) => (
+          {supervisors.map((supervisor) => (
             <option key={supervisor.id} value={supervisor.id}>{supervisor.name}{supervisor.email ? ` (${supervisor.email})` : ""}</option>
           ))}
         </select>

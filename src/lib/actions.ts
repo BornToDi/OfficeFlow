@@ -753,11 +753,9 @@ async function enforceBill5GmRoute(parsed: { formatType: string; supervisorId: s
     where: { role: "supervisor" },
     select: { id: true, name: true, designation: true },
   });
-  const gm = supervisors.find((supervisor) =>
-    String(supervisor.designation || supervisor.name).trim().toLowerCase() === "gm"
-  );
   if (parsed.supervisorId) {
-    if (!gm || parsed.supervisorId !== gm.id) throw new Error("This bill must be forwarded to the GM.");
+    const targetIsSupervisor = supervisors.some((supervisor) => supervisor.id === parsed.supervisorId);
+    if (!targetIsSupervisor) throw new Error("Please select a valid supervisor.");
     return;
   }
   if (parsed.gmBypassConfirmation !== "sure") {
