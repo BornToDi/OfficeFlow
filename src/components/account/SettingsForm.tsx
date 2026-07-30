@@ -6,12 +6,20 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { updateProfile } from "@/lib/actions";
+import { DEPARTMENTS } from "@/lib/departments";
 import type { Role } from "@/lib/types";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { UserRound } from "lucide-react";
 
 const schema = z.object({
@@ -107,7 +115,31 @@ export default function SettingsForm({
 
           <div className="grid gap-2">
             <label className="text-sm font-medium text-slate-700" htmlFor="department">Department</label>
-            <Input id="department" placeholder="e.g. Engineering, Sales, HR" {...form.register("department")} className="border-slate-300 focus-visible:ring-blue-400" />
+            {role === "employee" || role === "supervisor" ? (
+              <Select
+                value={form.watch("department") || ""}
+                onValueChange={(value) =>
+                  form.setValue("department", value, {
+                    shouldValidate: true,
+                    shouldDirty: true,
+                  })
+                }
+                disabled={isPending}
+              >
+                <SelectTrigger id="department" className="border-slate-300 focus:ring-blue-400">
+                  <SelectValue placeholder="Select department" />
+                </SelectTrigger>
+                <SelectContent>
+                  {DEPARTMENTS.map((department) => (
+                    <SelectItem key={department} value={department}>
+                      {department}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input id="department" placeholder="e.g. Engineering, Sales, HR" {...form.register("department")} className="border-slate-300 focus-visible:ring-blue-400" />
+            )}
             {form.formState.errors.department && (
               <p className="text-xs text-red-600">{form.formState.errors.department.message}</p>
             )}

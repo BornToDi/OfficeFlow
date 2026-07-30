@@ -1,0 +1,16 @@
+export const DEPARTMENTS = [
+  "Software Department",
+  "Sales Department",
+  "Account Department",
+  "IT Department",
+  "ATM Department",
+  "POS Department",
+  "Power Department",
+  "AC Department",
+  "Surveillance (CC TV)",
+  "Civil Department",
+  "Logistic Department",
+  "Admin Department",
+  "Accounts Department",
+  "CareTaker",
+] as const;

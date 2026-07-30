@@ -7,6 +7,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { register as registerAction } from "@/lib/actions";
+import { DEPARTMENTS } from "@/lib/departments";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,23 +28,6 @@ type Supervisor = {
   email: string;
   employeeCode?: string | null;
 };
-
-const DEPARTMENTS = [
-  "Software Department",
-  "Sales Department",
-  "Account Department",
-  "IT Department",
-  "ATM Department",
-  "POS Department",
-  "Power Department",
-  "AC Department",
-  "Surveillance (CC TV)",
-  "Civil Department",
-  "Logistic Department",
-  "Admin Department",
-  "Accounts Department",
-  "CareTaker",
-] as const;
 
 const schema = z
   .object({
