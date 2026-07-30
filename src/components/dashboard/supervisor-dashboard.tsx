@@ -1,10 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { Bill, User } from "@/lib/types";
 import { BillsTable } from "../bills/bills-table";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
-import { Button } from "../ui/button";
 import PendingSupervisorChangeRequests, {
   type SupervisorChangeRequest,
 } from "../supervisor/PendingSupervisorChangeRequests";
@@ -16,13 +15,19 @@ interface SupervisorDashboardProps {
   supervisorChangeRequests: SupervisorChangeRequest[];
 }
 
+function latestBillActivityTime(bill: Bill) {
+  return Math.max(
+    new Date(bill.updatedAt).getTime() || 0,
+    ...(bill.history ?? []).map((entry) => new Date(entry.timestamp).getTime() || 0)
+  );
+}
+
 export function SupervisorDashboard({
   user,
   bills,
   users,
   supervisorChangeRequests,
 }: SupervisorDashboardProps) {
-  const [billScope, setBillScope] = useState<"all" | "mine">("all");
   const teamMemberIds = users
     .filter((u) => String(u.supervisorId) === String(user.id))
     .map((e) => String(e.id));
@@ -42,28 +47,27 @@ export function SupervisorDashboard({
   // All bills associated with the supervisor's team, including their own, for summary stats.
   const teamAndOwnBills = bills.filter((bill) => {
     const isOwnBill = String(bill.employeeId) === String(user.id);
+    const approvedByCurrentSupervisor = (bill.history ?? []).some(
+      (entry) =>
+        entry.status === "APPROVED_BY_SUPERVISOR" &&
+        String(entry.actorId) === String(user.id)
+    );
     if (bill.status === "DRAFT" && !isOwnBill) return false;
     return bill.status !== "SUBMITTED" && (
       teamMemberIds.includes(String(bill.employeeId)) ||
       isOwnBill ||
-      String(bill.supervisorId) === String(user.id)
+      String(bill.supervisorId) === String(user.id) ||
+      approvedByCurrentSupervisor
     );
   });
-  const filteredTeamBills = useMemo(() => {
-    if (billScope === "mine") {
-      return bills.filter(
-        (bill) =>
-          String(bill.employeeId) === String(user.id) ||
-          (bill.status !== "DRAFT" &&
-            (bill.history ?? []).some(
-              (entry) =>
-                entry.status === "SUBMITTED" && String(entry.actorId) === String(user.id)
-            ))
-      );
-    }
-    return teamAndOwnBills;
-  }, [billScope, bills, teamAndOwnBills, user.id]);
-  const recentTeamBills = filteredTeamBills.slice(0, 10);
+  const recentOwnBills = useMemo(() => {
+    return bills
+      .filter((bill) => String(bill.employeeId) === String(user.id))
+      .sort(
+      (left, right) => latestBillActivityTime(right) - latestBillActivityTime(left)
+      )
+      .slice(0, 10);
+  }, [bills, user.id]);
 
   const pendingCount = pendingApprovalBills.length;
   const approvedCount = teamAndOwnBills.filter(bill => bill.status.startsWith('APPROVED')).length;
@@ -128,25 +132,10 @@ export function SupervisorDashboard({
 
       <BillsTable bills={pendingApprovalBills} users={users} title="Bills Awaiting Your Approval" />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant={billScope === "all" ? "default" : "outline"}
-          onClick={() => setBillScope("all")}
-        >
-          All Team Bills
-        </Button>
-        <Button
-          variant={billScope === "mine" ? "default" : "outline"}
-          onClick={() => setBillScope("mine")}
-        >
-          My Bills
-        </Button>
-      </div>
-
       <BillsTable
-        bills={recentTeamBills}
+        bills={recentOwnBills}
         users={users}
-        title={billScope === "mine" ? "My Recent Bills" : "Recent Team Bills"}
+        title="My Recent Bills"
       />
     </div>
   );

@@ -16,6 +16,7 @@ import { Bill5ApprovalForm } from "@/components/bills/Bill5ApprovalForm";
 import {
   cleanBillHistoryComment,
   employeeSubmittedAmount,
+  filterForwardingSupervisors,
   isGmIdentity,
   isAccountsApproved,
   parseSupervisorEditChanges,
@@ -149,7 +150,7 @@ export default async function BillDetail({
 
   // supervisors for forwarding dropdown
   const supervisors = await listSupervisors();
-  const otherSupervisors = supervisors.filter((supervisor) => supervisor.id !== session.user.id);
+  const otherSupervisors = filterForwardingSupervisors(supervisors, session.user.id);
   const gmSupervisor = supervisors.find((supervisor) =>
     isGmIdentity(supervisor)
   );
@@ -177,14 +178,22 @@ async function approveOrForward(formData: FormData) {
   if (action === "approve") {
     const isBill5SupervisorApproval =
       currentIsBill5 && sessionNow.user.role === "supervisor";
-    const supervisorsNow = isBill5SupervisorApproval ? await listSupervisors() : [];
+    const supervisorsNow = sessionNow.user.role === "supervisor" ? await listSupervisors() : [];
+    const allowedForwardingSupervisors = filterForwardingSupervisors(
+      supervisorsNow,
+      sessionNow.user.id
+    );
     const sessionUserIsGm =
       isGmIdentity(sessionNow.user) ||
       supervisorsNow.some((supervisor) => supervisor.id === sessionNow.user.id && isGmIdentity(supervisor));
+    if (
+      nextSupervisorId &&
+      !sessionUserIsGm &&
+      !allowedForwardingSupervisors.some((supervisor) => supervisor.id === nextSupervisorId)
+    ) {
+      throw new Error("You can only forward to a supervisor in your department or to the GM.");
+    }
     if (isBill5SupervisorApproval && !sessionUserIsGm) {
-      if (nextSupervisorId && !supervisorsNow.some((supervisor) => supervisor.id === nextSupervisorId)) {
-        throw new Error("Please select a valid supervisor.");
-      }
       const gm = supervisorsNow.find((supervisor) => isGmIdentity(supervisor));
       if (!nextSupervisorId && !gm) throw new Error("Bill-5 GM account is not available.");
       if (!nextSupervisorId && gm) {

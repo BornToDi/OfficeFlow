@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { BillForm } from "@/components/bills/bill-form";
 import { listSupervisors } from "@/lib/repo";
+import { filterForwardingSupervisors } from "@/lib/bill-visibility";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -17,9 +18,7 @@ export default async function NewBillPage() {
   let supervisors: Awaited<ReturnType<typeof listSupervisors>> = [];
   if (user.role === "supervisor") {
     try {
-      supervisors = (await listSupervisors()).filter(
-        (supervisor) => supervisor.id !== user.id
-      );
+      supervisors = filterForwardingSupervisors(await listSupervisors(), user.id);
     } catch (error) {
       console.error("Failed to load supervisors for new bill page:", error);
       supervisors = [];

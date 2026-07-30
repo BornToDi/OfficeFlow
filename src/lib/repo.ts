@@ -294,7 +294,17 @@ export async function listSupervisors() {
     orderBy: { name: "asc" },
     select: { id: true, name: true, email: true, designation: true }
   });
-  return sup;
+  // Temporary compatibility path until Prisma client is regenerated with `department`.
+  const departmentRows = await prisma.$queryRaw<Array<{ id: string; department: string | null }>>`
+    SELECT \`id\`, \`department\`
+    FROM \`User\`
+    WHERE \`role\` = 'supervisor'
+  `;
+  const departmentById = new Map(departmentRows.map((row) => [row.id, row.department]));
+  return sup.map((supervisor) => ({
+    ...supervisor,
+    department: departmentById.get(supervisor.id) ?? null,
+  }));
 }
 
 export async function listDirectReports(supervisorId: string) {

@@ -22,6 +22,34 @@ export function isGmIdentity(user: { email?: string | null; name?: string | null
   return identity === "gm" || identity === "general manager";
 }
 
+type ForwardingSupervisor = {
+  id: string;
+  email?: string | null;
+  name?: string | null;
+  designation?: string | null;
+  department?: string | null;
+};
+
+const normalizeForwardingDepartment = (value?: string | null) =>
+  String(value || "").trim().toLowerCase();
+
+export function filterForwardingSupervisors<T extends ForwardingSupervisor>(
+  supervisors: T[],
+  currentSupervisorId: string
+) {
+  const currentSupervisor = supervisors.find(
+    (supervisor) => String(supervisor.id) === String(currentSupervisorId)
+  );
+  const currentDepartment = normalizeForwardingDepartment(currentSupervisor?.department);
+
+  return supervisors.filter((supervisor) => {
+    if (String(supervisor.id) === String(currentSupervisorId)) return false;
+    if (isGmIdentity(supervisor)) return true;
+    return Boolean(currentDepartment) &&
+      normalizeForwardingDepartment(supervisor.department) === currentDepartment;
+  });
+}
+
 export function employeeAmountMarker(amount: number) {
   return `[${EMPLOYEE_AMOUNT_MARKER}${Number(amount)}]`;
 }
