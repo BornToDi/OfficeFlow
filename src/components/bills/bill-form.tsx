@@ -1750,7 +1750,24 @@ export function BillForm(props: Props) {
           <select
             className="w-full md:w-[360px] rounded-md border bg-background px-3 py-2 text-sm"
             value={formatType}
-            onChange={(e)=> setFormatType(e.target.value as BillFormat)}
+            onChange={(e) => {
+              const nextFormat = e.target.value as BillFormat;
+              setFormatType(nextFormat);
+              if (!props.bill) {
+                form.setValue(
+                  "companyName",
+                  nextFormat === "BILL5" ? "Networld Technology Limited" : "Networld Bangladesh PLC",
+                  { shouldDirty: true }
+                );
+                form.setValue(
+                  "companyAddress",
+                  nextFormat === "BILL5"
+                    ? "Zeenat Bhaban, 41/1, Kazi Islam Avenue, Dhaka 1215"
+                    : "57 & 57/A, Uday Tower, (4th Floor) Gulshan 1, Gulshan Avenue, 1212 Dhaka",
+                  { shouldDirty: true }
+                );
+              }
+            }}
           >
             <option value="BILL1">Bill-1 (standard)</option>
             <option value="BILL2">Bill-2 (Combined Conveyance / Food / Hotel)</option>

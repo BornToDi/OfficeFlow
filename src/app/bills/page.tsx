@@ -121,7 +121,13 @@ export default async function BillsPage({
 
   return (
     <div className="container mx-auto p-6">
-      <BillsDriveView bills={bills} users={users} initialMonth={month} initialWeek={week} />
+      <BillsDriveView
+        bills={bills}
+        users={users}
+        initialMonth={month}
+        initialWeek={week}
+        viewerRole={session.user.role}
+      />
 
       {/* Pager */}
       <PaginationControls

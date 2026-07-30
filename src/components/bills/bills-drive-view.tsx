@@ -57,6 +57,7 @@ interface Props {
   users: PlainUser[];
   initialMonth: string;
   initialWeek?: number;
+  viewerRole: string;
 }
 
 const statusOptions: Array<{ value: "ALL" | Status; label: string }> = [
@@ -187,12 +188,13 @@ function ExpandedBillDetails({ bill, ownerName }: { bill: PlainBill; ownerName: 
   );
 }
 
-export function BillsDriveView({ bills, users, initialMonth, initialWeek }: Props) {
+export function BillsDriveView({ bills, users, initialMonth, initialWeek, viewerRole }: Props) {
   const [status, setStatus] = useState<"ALL" | Status>("ALL");
   const [openId, setOpenId] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const hideCompanyAddress = viewerRole === "employee" || viewerRole === "supervisor";
 
   const updatePeriod = (month: string, week?: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -282,7 +284,9 @@ export function BillsDriveView({ bills, users, initialMonth, initialWeek }: Prop
                 >
                   <div className="col-span-4 truncate">
                     <span className="font-medium">{b.companyName}</span>
-                    <span className="text-muted-foreground"> — {b.companyAddress}</span>
+                    {!hideCompanyAddress && (
+                      <span className="text-muted-foreground"> — {b.companyAddress}</span>
+                    )}
                   </div>
                   <div className="col-span-3 truncate">
                     {b.employee?.name ?? nameById.get(b.employeeId) ?? "—"}
