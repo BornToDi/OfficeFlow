@@ -1,6 +1,7 @@
 "use client";
 
-import type { User } from "@/lib/types";
+import { useState } from "react";
+import type { AdvanceSummary, EmployeeAdvance, User } from "@/lib/types";
 import {
   Table,
   TableBody,
@@ -12,14 +13,18 @@ import {
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "../ui/badge";
+import { AccountsAdvanceDialog } from "../dashboard/employee-advance-panel";
 
 interface TeamMembersTableProps {
   users: User[];
   allUsers: User[];
   currentUserRole?: User["role"];
+  advances: EmployeeAdvance[];
+  advanceSummaries: AdvanceSummary[];
 }
 
-export function TeamMembersTable({ users, allUsers, currentUserRole }: TeamMembersTableProps) {
+export function TeamMembersTable({ users, allUsers, currentUserRole, advances, advanceSummaries }: TeamMembersTableProps) {
+  const [selectedEmployee, setSelectedEmployee] = useState<User | null>(null);
   const userMap = new Map(allUsers.map((user) => [user.id, user.name]));
 
   async function handleDelete(userId: string) {
@@ -84,6 +89,7 @@ export function TeamMembersTable({ users, allUsers, currentUserRole }: TeamMembe
             <TableHead>Role</TableHead>
             <TableHead>Designation</TableHead>
             <TableHead>Supervisor</TableHead>
+            {currentUserRole === "accounts" && <TableHead className="text-right">Advance Balance</TableHead>}
             {(currentUserRole === "management" || currentUserRole === "followup") && <TableHead>Actions</TableHead>}
           </TableRow>
         </TableHeader>
@@ -92,7 +98,11 @@ export function TeamMembersTable({ users, allUsers, currentUserRole }: TeamMembe
             users.map((user) => {
               const initials = user.name.split(" ").map((n) => n[0]).join("");
               return (
-                <TableRow key={user.id}>
+                <TableRow
+                  key={user.id}
+                  className={currentUserRole === "accounts" && (user.role === "employee" || user.role === "supervisor") ? "cursor-pointer hover:bg-sky-50" : undefined}
+                  onClick={() => { if (currentUserRole === "accounts" && (user.role === "employee" || user.role === "supervisor")) setSelectedEmployee(user); }}
+                >
                   <TableCell>
                     <div className="flex items-center gap-4">
                        <Avatar>
@@ -111,6 +121,11 @@ export function TeamMembersTable({ users, allUsers, currentUserRole }: TeamMembe
                   </TableCell>
                   <TableCell>{user.designation || 'N/A'}</TableCell>
                   <TableCell>{user.supervisorId ? userMap.get(user.supervisorId) : 'N/A'}</TableCell>
+                  {currentUserRole === "accounts" && (
+                    <TableCell className={`text-right font-bold ${(advanceSummaries.find((item) => item.employeeId === user.id)?.balance || 0) < 0 ? "text-red-600" : "text-emerald-700"}`}>
+                      {(user.role === "employee" || user.role === "supervisor") ? `BDT ${new Intl.NumberFormat("en-BD", { maximumFractionDigits: 0 }).format(advanceSummaries.find((item) => item.employeeId === user.id)?.balance || 0)}` : "-"}
+                    </TableCell>
+                  )}
                   {(currentUserRole === "management" || currentUserRole === "followup") && (
                     <TableCell>
                       <div className="flex gap-2">
@@ -134,6 +149,13 @@ export function TeamMembersTable({ users, allUsers, currentUserRole }: TeamMembe
           )}
         </TableBody>
       </Table>
+      <AccountsAdvanceDialog
+        employee={selectedEmployee}
+        summary={advanceSummaries.find((item) => item.employeeId === selectedEmployee?.id)}
+        advances={advances.filter((entry) => entry.employeeId === selectedEmployee?.id)}
+        open={!!selectedEmployee}
+        onOpenChange={(open) => { if (!open) setSelectedEmployee(null); }}
+      />
     </Card>
   );
 }

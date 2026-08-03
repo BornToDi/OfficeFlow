@@ -1,11 +1,14 @@
 import { BillsTable } from "../bills/bills-table";
-import type { Bill, User } from "@/lib/types";
+import type { AdvanceSummary, Bill, EmployeeAdvance, User } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { EmployeeAdvanceCard } from "./employee-advance-panel";
 
 interface EmployeeDashboardProps {
   user: User;
   bills: Bill[];
   users: User[];
+  advances: EmployeeAdvance[];
+  advanceSummary?: AdvanceSummary;
 }
 
 function getStatusCounts(bills: Bill[]) {
@@ -29,12 +32,14 @@ function getStatusCounts(bills: Bill[]) {
     return counts;
 }
 
-export function EmployeeDashboard({ user, bills, users }: EmployeeDashboardProps) {
+export function EmployeeDashboard({ user, bills, users, advances, advanceSummary }: EmployeeDashboardProps) {
   const myBills = bills.filter((bill) => String(bill.employeeId) === String(user.id));
   const counts = getStatusCounts(myBills);
   const recentBills = myBills.slice(0, 5);
-  const myPaidAmount = myBills
-    .filter((b) => b.status === "PAID")
+  const pendingBills = myBills.filter((bill) =>
+    bill.status === "SUBMITTED" || bill.status.startsWith("APPROVED")
+  );
+  const pendingAmount = pendingBills
     .reduce((acc, b) => acc + Number(b.amount ?? 0), 0);
 
   return (
@@ -49,14 +54,18 @@ export function EmployeeDashboard({ user, bills, users }: EmployeeDashboardProps
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending</CardTitle>
+            <CardTitle className="text-sm font-medium">Pending Amount</CardTitle>
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" className="h-4 w-4 text-muted-foreground"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.88.98 6.7 2.6l-2.7 2.7h8V2"/></svg>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{counts.pending}</div>
-            <p className="text-xs text-muted-foreground">Bills awaiting approval</p>
+            <div className="text-2xl font-bold"><span aria-label="BDT">&#2547;</span>{new Intl.NumberFormat("en-BD", { maximumFractionDigits: 2 }).format(pendingAmount)}</div>
+            <p className="text-xs text-muted-foreground">{pendingBills.length} unpaid {pendingBills.length === 1 ? "bill" : "bills"}</p>
           </CardContent>
         </Card>
+        <EmployeeAdvanceCard
+          summary={advanceSummary ?? { employeeId: user.id, totalGranted: 0, usedForPaidBills: 0, balance: 0 }}
+          advances={advances}
+        />
          <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Approved</CardTitle>
@@ -75,16 +84,6 @@ export function EmployeeDashboard({ user, bills, users }: EmployeeDashboardProps
           <CardContent>
             <div className="text-2xl font-bold">{counts.rejected}</div>
             <p className="text-xs text-muted-foreground">Bills that need resubmission</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Paid</CardTitle>
-            <span className="text-base font-semibold text-muted-foreground" aria-hidden="true">&#2547;</span>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold"><span aria-label="BDT">&#2547;</span>{new Intl.NumberFormat("en-BD", { maximumFractionDigits: 2 }).format(myPaidAmount)}</div>
-            <p className="text-xs text-muted-foreground">Total amount reimbursed</p>
           </CardContent>
         </Card>
       </div>

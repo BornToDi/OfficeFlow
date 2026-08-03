@@ -435,6 +435,41 @@ export async function bulkApproveBill5AsGm(billIds: string[]) {
   return result;
 }
 
+export async function recordEmployeeAdvance(
+  employeeId: string,
+  amount: number,
+  note?: string,
+): Promise<{ success?: boolean; error?: string }> {
+  const session = await getSession();
+  if (!session || session.user.role !== "accounts") {
+    return { error: "Only Accounts can record an employee advance." };
+  }
+
+  const employee = await prisma.user.findUnique({
+    where: { id: employeeId },
+    select: { id: true, role: true },
+  });
+  if (!employee || !(["employee", "supervisor"] as const).includes(employee.role as "employee" | "supervisor")) {
+    return { error: "Select a valid employee or supervisor." };
+  }
+
+  const wholeAmount = Math.trunc(Number(amount));
+  if (!Number.isFinite(wholeAmount) || wholeAmount <= 0) {
+    return { error: "Enter a valid advance amount greater than zero." };
+  }
+
+  await prisma.employeeAdvance.create({
+    data: {
+      employeeId,
+      recordedById: session.user.id,
+      amount: wholeAmount,
+      note: note?.trim().slice(0, 250) || null,
+    },
+  });
+  revalidatePath("/dashboard");
+  return { success: true };
+}
+
 /** Resolve a supervisor-typed identifier to a real User.id.
  *  Accepts: exact User.id OR employeeCode (case-insensitive).
  */

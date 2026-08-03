@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { bulkApproveBill5AsGm } from "@/lib/actions";
-import type { Bill, User } from "@/lib/types";
+import type { AdvanceSummary, Bill, EmployeeAdvance, User } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { departmentRowColor } from "@/lib/department-colors";
+import { EmployeeAdvanceCard } from "./employee-advance-panel";
 
 const money = new Intl.NumberFormat("en-BD", { style: "currency", currency: "BDT", maximumFractionDigits: 0 });
 
-export function GmBill5Dashboard({ user, bills, users }: { user: User; bills: Bill[]; users: User[] }) {
+export function GmBill5Dashboard({ user, bills, users, advances, advanceSummary }: { user: User; bills: Bill[]; users: User[]; advances: EmployeeAdvance[]; advanceSummary?: AdvanceSummary }) {
   const [department, setDepartment] = useState("all");
   const [month, setMonth] = useState("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -52,9 +53,10 @@ export function GmBill5Dashboard({ user, bills, users }: { user: User; bills: Bi
   const total = filtered.reduce((sum, bill) => sum + Number(bill.amount || 0), 0);
   return <div className="space-y-6">
     <div><h1 className="text-3xl font-bold">Bill-5 GM Control Center</h1><p className="text-muted-foreground">Review every department, hold exceptions, and send approved bills to Accounts in one action.</p></div>
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="grid gap-4 md:grid-cols-4">
       <Metric title="Bills in view" value={String(filtered.length)} />
       <Metric title="Waiting for your approval" value={String(eligible.length)} />
+      <EmployeeAdvanceCard summary={advanceSummary ?? { employeeId: user.id, totalGranted: 0, usedForPaidBills: 0, balance: 0 }} advances={advances} />
       <Metric title="Amount in view" value={money.format(total)} />
     </div>
     <div className="flex flex-wrap gap-3 rounded-lg border bg-card p-4">

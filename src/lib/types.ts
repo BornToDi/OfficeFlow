@@ -59,3 +59,20 @@ export interface Bill {
     comment?: string | null;
   }[];
 }
+
+export interface EmployeeAdvance {
+  id: string;
+  employeeId: string;
+  recordedById: string;
+  recordedByName: string;
+  amount: number;
+  note?: string | null;
+  grantedAt: string;
+}
+
+export interface AdvanceSummary {
+  employeeId: string;
+  totalGranted: number;
+  usedForPaidBills: number;
+  balance: number;
+}

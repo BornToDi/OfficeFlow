@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/actions";
 import {
   getPendingSupervisorChangeRequests,
+  listAllEmployeeAdvances,
   listAllBills,
   listAllUsers,
 } from "@/lib/repo";
@@ -16,6 +17,7 @@ import type { SupervisorChangeRequest } from "@/components/supervisor/PendingSup
 import { employeeSubmittedAmount, isAccountsApproved } from "@/lib/bill-visibility";
 import { isGmIdentity } from "@/lib/bill-visibility";
 import { GmBill5Dashboard } from "@/components/dashboard/gm-bill5-dashboard";
+import { calculateAdvanceSummaries } from "@/lib/advance-balance";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -25,18 +27,28 @@ export default async function DashboardPage() {
   if (!session) redirect("/");
 
   // Fetch from DB
-  const [rawBills, rawUsers, rawSupervisorChangeRequests] = await Promise.all([
+  const [rawBills, rawUsers, rawSupervisorChangeRequests, rawAdvances] = await Promise.all([
     listAllBills(),
     listAllUsers(),
     session.user.role === "supervisor"
       ? getPendingSupervisorChangeRequests(session.user.id)
       : Promise.resolve([]),
+    listAllEmployeeAdvances(),
   ]);
 
   // 🔧 Convert Prisma types -> plain JSON-friendly objects
   const plainBills = rawBills.map(toPlainBill);
   const users = rawUsers.map(toPlainUser);
   const user = toPlainUser(session.user);
+  const advances = rawAdvances.map((advance) => ({
+    id: advance.id,
+    employeeId: advance.employeeId,
+    recordedById: advance.recordedById,
+    recordedByName: advance.recordedBy.name,
+    amount: Number(advance.amount),
+    note: advance.note,
+    grantedAt: advance.grantedAt.toISOString(),
+  }));
   const bills =
     user.role === "employee"
       ? plainBills.map((bill) =>
@@ -48,6 +60,11 @@ export default async function DashboardPage() {
               }
         )
       : plainBills;
+  const advanceSummaries = calculateAdvanceSummaries(
+    users.map((employee) => employee.id),
+    bills,
+    advances,
+  );
   const supervisorChangeRequests: SupervisorChangeRequest[] = rawSupervisorChangeRequests
     .filter((request): request is NonNullable<typeof request> => request !== null)
     .filter((request) => request.employee !== null && request.newSupervisor !== null)
@@ -64,12 +81,12 @@ export default async function DashboardPage() {
     case "employee":
       return (
         <div className="container mx-auto">
-          <EmployeeDashboard user={user} bills={bills} users={users} />
+          <EmployeeDashboard user={user} bills={bills} users={users} advances={advances.filter((advance) => advance.employeeId === user.id)} advanceSummary={advanceSummaries.find((summary) => summary.employeeId === user.id)} />
         </div>
       );
     case "supervisor":
       if (isGmIdentity(user)) {
-        return <div className="container mx-auto"><GmBill5Dashboard user={user} bills={bills} users={users} /></div>;
+        return <div className="container mx-auto"><GmBill5Dashboard user={user} bills={bills} users={users} advances={advances.filter((advance) => advance.employeeId === user.id)} advanceSummary={advanceSummaries.find((summary) => summary.employeeId === user.id)} /></div>;
       }
       return (
         <div className="container mx-auto">
@@ -78,6 +95,8 @@ export default async function DashboardPage() {
             bills={bills}
             users={users}
             supervisorChangeRequests={supervisorChangeRequests}
+            advances={advances.filter((advance) => advance.employeeId === user.id)}
+            advanceSummary={advanceSummaries.find((summary) => summary.employeeId === user.id)}
           />
         </div>
       );

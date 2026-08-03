@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { User, Role } from "@/lib/types";
+import type { AdvanceSummary, EmployeeAdvance, User, Role } from "@/lib/types";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -17,9 +17,11 @@ interface TeamViewProps {
   initialUsers: User[];
   allUsers: User[];
   currentUserRole: User["role"];
+  advances: EmployeeAdvance[];
+  advanceSummaries: AdvanceSummary[];
 }
 
-export function TeamView({ initialUsers, allUsers, currentUserRole }: TeamViewProps) {
+export function TeamView({ initialUsers, allUsers, currentUserRole, advances, advanceSummaries }: TeamViewProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<Role | "all">("all");
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
@@ -91,7 +93,7 @@ export function TeamView({ initialUsers, allUsers, currentUserRole }: TeamViewPr
           </Select>
         </div>
       </div>
-      <TeamMembersTable users={filteredUsers} allUsers={allUsers} currentUserRole={currentUserRole} />
+      <TeamMembersTable users={filteredUsers} allUsers={allUsers} currentUserRole={currentUserRole} advances={advances} advanceSummaries={advanceSummaries} />
     </div>
   );
 }

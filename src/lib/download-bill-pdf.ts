@@ -27,6 +27,19 @@ const date = (value: string) => {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value || dash : parsed.toLocaleDateString("en-GB");
 };
+const filenamePart = (value: string, fallback: string) =>
+  (value || fallback)
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/[. ]+$/g, "")
+    .trim() || fallback;
+const filenameDate = (value?: string) => {
+  const parsed = value ? new Date(value) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) return "no-date";
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  return `${day}-${month}-${parsed.getFullYear()}`;
+};
 const json = (value: string) => {
   try { return JSON.parse(value || "{}"); } catch { return { purpose: value }; }
 };
@@ -135,7 +148,10 @@ export async function downloadBillPdf(billId: string) {
   const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = objectUrl;
-  link.download = `bill-${bill.id.slice(-8)}.pdf`;
+  const employeeName = filenamePart(bill.employee?.name || "", "Employee");
+  const employeeCode = filenamePart(bill.employee?.employeeCode || "", "no-code");
+  const billDate = filenameDate(bill.items[0]?.date);
+  link.download = `${employeeName}(${employeeCode},${billDate}).pdf`;
   link.style.display = "none";
   document.body.appendChild(link);
   link.click();

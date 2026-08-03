@@ -4,6 +4,13 @@ import type { Role, BillStatus } from "./types";
 import { employeeAmountMarker } from "./bill-visibility";
 import crypto from "node:crypto";
 
+export async function listAllEmployeeAdvances() {
+  return prisma.employeeAdvance.findMany({
+    orderBy: [{ grantedAt: "desc" }, { createdAt: "desc" }],
+    include: { recordedBy: { select: { name: true } } },
+  });
+}
+
 // ---- DUPLICATE TRIP GUARD ----
 // "Same bill again" = same employee + same calendar day + same from/to/purpose.
 

@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, Fragment } from "react";
 import { useForm, useFieldArray, FormProvider, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { format } from "date-fns";
+import { format, isValid, parse } from "date-fns";
 import { Calendar as CalendarIcon, PlusCircle, Trash2, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { downloadBillPdf } from "@/lib/download-bill-pdf";
@@ -113,6 +113,7 @@ type RowB4 = {
 
 /* Row shape for combined Bill-5 (merge of Bill-2, Bill-3, Bill-4) */
 type RowB5Child = {
+  incident: string;
   purpose: string;
   bankName?: string;
   time?: string;
@@ -132,8 +133,6 @@ type RowB5 = {
   name: string;
   dateFrom: Date;
   dateTo: Date;
-  time?: string;
-  incident?: string;
   children: RowB5Child[];
 };
 type Bill2OptionalColumn = "bankName" | "trip" | "food" | "hotel" | "others" | "advance";
@@ -190,8 +189,17 @@ type BillFormValues = z.infer<typeof billFormSchema>;
 
 /* ---------- Helpers ---------- */
 const safeDate = (v?: string|Date|null) => {
-  const d = v instanceof Date ? v : v ? new Date(v) : new Date();
-  return isNaN(d.getTime()) ? new Date() : d;
+  if (v instanceof Date) return isValid(v) ? v : new Date();
+  if (!v) return new Date();
+
+  const nativeDate = new Date(v);
+  if (isValid(nativeDate)) return nativeDate;
+
+  // Older Bill 2/3/5 rows stored Date To using date-fns' PPP display
+  // format (for example "August 1st, 2026"), which `new Date` cannot
+  // reliably parse. Keep those existing rows readable during migration.
+  const displayDate = parse(v, "PPP", new Date());
+  return isValid(displayDate) ? displayDate : new Date();
 };
 const detectFormat = (items?: BillViewItem[]): BillFormat => {
   if (!items?.length) return "BILL1";
@@ -323,7 +331,7 @@ const encB5Child = (parent: RowB5, child: RowB5Child, selectedColumns: Bill5Opti
     time: child.time || "",
     dateFrom: child.dateFrom ? (child.dateFrom instanceof Date ? child.dateFrom.toISOString() : String(child.dateFrom)) : "",
     dateTo: child.dateTo ? (child.dateTo instanceof Date ? child.dateTo.toISOString() : String(child.dateTo)) : "",
-    incident: parent.incident||"",
+    incident: child.incident||"",
     purpose: child.purpose||"",
     bankName: child.bankName||"",
     vehicle: child.vehicle||"",
@@ -441,6 +449,7 @@ function Bill5ChildTable({
           <TableHeader className="bg-slate-50/90">
             <TableRow className="border-slate-200 hover:bg-transparent">
               {selectedColumns.includes("bankName") ? <TableHead>Bank Name</TableHead> : null}
+              <TableHead className="min-w-[150px]">Incident</TableHead>
               <TableHead>Purpose</TableHead>
               <TableHead className="min-w-[120px]">From</TableHead>
               <TableHead className="min-w-[120px]">To</TableHead>
@@ -480,6 +489,11 @@ function Bill5ChildTable({
                     )} />
                   </TableCell>
                 ) : null}
+                <TableCell>
+                  <FormField control={control} name={`items.${parentIndex}.children.${ci}.incident`} render={({ field }) => (
+                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="Incident (optional)" className={cn("w-[150px]", BILL5_FIELD_CLASS)} /></FormControl><FormMessage/></FormItem>
+                  )} />
+                </TableCell>
                 <TableCell>
                   <FormField control={control} name={`items.${parentIndex}.children.${ci}.purpose`} render={({ field }) => (
                     <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="Purpose" className={cn("w-[220px]", BILL5_FIELD_CLASS)} /></FormControl><FormMessage/></FormItem>
@@ -533,7 +547,7 @@ function Bill5ChildTable({
                     <FormField control={control} name={`items.${parentIndex}.children.${ci}.${k}`} render={({ field }) => (
                       <FormItem>
                         <FormControl>
-                          <Input type="number" step="0.01" className={cn("no-spinner w-[90px] text-right", BILL5_FIELD_CLASS)} value={field.value ?? ""} onChange={(e)=> field.onChange(e.target.value === "" ? "" : Number(e.target.value))} />
+                          <Input type="text" inputMode="numeric" className={cn("w-[90px] text-right", BILL5_FIELD_CLASS)} value={field.value ?? ""} onChange={(e)=> field.onChange(e.target.value === "" ? "" : Math.trunc(Number(e.target.value.replace(/\D/g, ""))))} />
                         </FormControl>
                         <FormMessage/>
                       </FormItem>
@@ -570,7 +584,7 @@ function Bill5ChildTable({
         </Table>
       </div>
       <div className="mt-1">
-        <Button type="button" variant="outline" size="sm" onClick={() => appendChild({ purpose: "", time: "", dateFrom: "", dateTo: "", vehicle: "", local: undefined, trip: undefined, food: undefined, hotel: undefined, others: undefined, advance: undefined, remarks: "" } as any)}>
+        <Button type="button" variant="outline" size="sm" onClick={() => appendChild({ incident: "", purpose: "", time: "", dateFrom: "", dateTo: "", vehicle: "", local: undefined, trip: undefined, food: undefined, hotel: undefined, others: undefined, advance: undefined, remarks: "" } as any)}>
           <PlusCircle className="mr-2 h-4 w-4" /> Add row
         </Button>
       </div>
@@ -639,7 +653,6 @@ function EditorBill5({
                 <TableHead>SL</TableHead>
                 <TableHead>Date From</TableHead>
                 <TableHead>Date To</TableHead>
-                <TableHead className="min-w-[150px]">Incident</TableHead>
                 <TableHead className="min-w-[560px]">
                   Purpose (click Add row to add nested child)
                 </TableHead>
@@ -703,26 +716,6 @@ function EditorBill5({
                     </TableCell>
                   ))}
 
-                  <TableCell className="p-1 min-w-[150px]">
-                    <FormField
-                      control={control}
-                      name={`items.${i}.incident`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormControl>
-                            <Input
-                              placeholder="Incident"
-                              {...field}
-                              autoComplete="off"
-                              className={cn("w-[150px]", BILL5_FIELD_CLASS)}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </TableCell>
-
                   <TableCell className="p-1 max-w-[900px] overflow-hidden">
                     <Bill5ChildTable
                       control={control}
@@ -762,9 +755,9 @@ function EditorBill5({
             name: employeeName || "",
             dateFrom: new Date(),
             dateTo: new Date(),
-            incident: "",
             children: [
               {
+                incident: "",
                 purpose: "",
                 time: "",
                 dateFrom: "",
@@ -839,7 +832,6 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
     name: string;
     dateFrom: Date;
     dateTo: Date;
-    incident: string;
     children: Array<ReturnType<typeof decB5Child> & { attachmentUrl?: string | null }>;
   }> = [];
 
@@ -854,7 +846,6 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
         parsed.parentName || "",
         dateFrom.toISOString(),
         dateTo.toISOString(),
-        parsed.incident || "",
       ].join("|");
 
       let g = groupMap.get(key);
@@ -863,7 +854,6 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
           name: parsed.parentName || "",
           dateFrom,
           dateTo,
-          incident: parsed.incident || "",
           children: [],
         };
         groupMap.set(key, g);
@@ -879,7 +869,6 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
           name: "",
           dateFrom,
           dateTo,
-          incident: "",
           children: [],
         };
         groupMap.set(key, g);
@@ -975,18 +964,17 @@ function ViewBill5({ b, fallbackDesignation, viewerRole }: { b: BillViewData; fa
                             <TableCell className="p-3 text-sm" rowSpan={g.children.length}>{i + 1}</TableCell>
                             <TableCell className="p-3 text-sm" rowSpan={g.children.length}>{format(g.dateFrom, "MMM d")}</TableCell>
                             <TableCell className="p-3 text-sm" rowSpan={g.children.length}>{format(g.dateTo, "MMM d")}</TableCell>
-                            <TableCell className="p-3 text-sm align-middle" rowSpan={g.children.length}>
-                              <div>{g.incident || "-"}</div>
-                              {incidentWarningFor(g.incident) ? (
-                                <p className="mt-1 max-w-[220px] text-xs font-medium leading-4 text-red-600">
-                                  Incident &quot;{g.incident}&quot; was already used once by {incidentWarningFor(g.incident)}.
-                                </p>
-                              ) : null}
-                            </TableCell>
-                              
                           </>
                         ) : null}
 
+                        <TableCell className="p-3 text-sm align-middle">
+                          <div>{c.incident || "-"}</div>
+                          {incidentWarningFor(c.incident) ? (
+                            <p className="mt-1 max-w-[220px] text-xs font-medium leading-4 text-red-600">
+                              Incident &quot;{c.incident}&quot; was already used once by {incidentWarningFor(c.incident)}.
+                            </p>
+                          ) : null}
+                        </TableCell>
                         <TableCell className="p-3 text-sm">{c.time || "-"}</TableCell>
                         <TableCell className="p-3 text-sm">{c.dateFrom || "-"}</TableCell>
                         <TableCell className="p-3 text-sm">{c.dateTo || "-"}</TableCell>
@@ -1094,7 +1082,7 @@ export function BillForm(props: Props) {
             : formatType === "BILL3"
             ? [{ name: "user" in props ? (props.user as any).name : "", dateFrom:new Date(), dateTo:new Date(), purpose:"", food:undefined as any, hotel:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }]
             : formatType === "BILL5"
-              ? [{ name: "user" in props ? (props.user as any).name : "", dateFrom: new Date(), dateTo: new Date(), incident: "", children: [{ purpose: "", time: "", dateFrom: "", dateTo: "", vehicle: "", local: undefined as any, trip: undefined as any, food: undefined as any, hotel: undefined as any, others: undefined as any, advance: undefined as any, remarks: "" }] } as any]
+              ? [{ name: "user" in props ? (props.user as any).name : "", dateFrom: new Date(), dateTo: new Date(), children: [{ incident: "", purpose: "", time: "", dateFrom: "", dateTo: "", vehicle: "", local: undefined as any, trip: undefined as any, food: undefined as any, hotel: undefined as any, others: undefined as any, advance: undefined as any, remarks: "" }] } as any]
             : [{date: new Date(),time: "",incident: "", purpose: "",vehicle: "",food: undefined as any,hotel: undefined as any,others: undefined as any,advance: undefined as any,remarks: ""}],
       };
     }
@@ -1140,21 +1128,20 @@ export function BillForm(props: Props) {
         try {
           const parsed = decB5Child(it.purpose as string);
           // A Bill-5 employee can have multiple parent rows with the same name.
-          // Keep rows with different date ranges/incidents separate; grouping by
-          // name alone caused an amount-only edit to overwrite every row date.
+          // Keep rows with different parent date ranges separate. Incident is
+          // child-level, so children with different incidents stay together.
           const key = [
             parsed.parentName || "",
             safeDate(it.date).toISOString(),
             it.to ? safeDate(it.to).toISOString() : safeDate(it.date).toISOString(),
-            parsed.incident || "",
           ].join("|");
-          groups[key] ??= { name: parsed.parentName || "", dateFrom: safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date), incident: parsed.incident, children: [] };
-          groups[key].children.push({ purpose: parsed.purpose, bankName: parsed.bankName, time: parsed.time || "", dateFrom: parsed.dateFrom || "", dateTo: parsed.dateTo || "", vehicle: parsed.vehicle, local: parsed.local, trip: parsed.trip, food: parsed.food, hotel: parsed.hotel, others: parsed.others, advance: parsed.advance, remarks: parsed.remarks });
+          groups[key] ??= { name: parsed.parentName || "", dateFrom: safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date), children: [] };
+          groups[key].children.push({ incident: parsed.incident, purpose: parsed.purpose, bankName: parsed.bankName, time: parsed.time || "", dateFrom: parsed.dateFrom || "", dateTo: parsed.dateTo || "", vehicle: parsed.vehicle, local: parsed.local, trip: parsed.trip, food: parsed.food, hotel: parsed.hotel, others: parsed.others, advance: parsed.advance, remarks: parsed.remarks });
         } catch {
           // fallback: push as single parent->child
           const key = String(it.date) + JSON.stringify(it);
-          groups[key] ??= { name: "", dateFrom: safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date), incident: "", children: [] };
-          groups[key].children.push({ purpose: it.purpose, time: "", dateFrom: "", dateTo: "", meal: "", local: 0, trip:0, food:0, hotel:0, others:0, advance:0, remarks: "" });
+          groups[key] ??= { name: "", dateFrom: safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date), children: [] };
+          groups[key].children.push({ incident: "", purpose: it.purpose, time: "", dateFrom: "", dateTo: "", meal: "", local: 0, trip:0, food:0, hotel:0, others:0, advance:0, remarks: "" });
         }
       });
       return {
@@ -1308,7 +1295,7 @@ export function BillForm(props: Props) {
       reset({ ...cur, items: [{ date:new Date(), time:"", incident:"", purpose:"",  vehicle: "",  food:undefined as any, hotel:undefined as any, others:undefined as any, advance:undefined as any, remarks:"" }] });
       setRowFiles(makeSingleAttachmentRow());
     } else if (formatType === "BILL5") {
-      reset({ ...cur, items: [{ name: "", dateFrom:new Date(), dateTo:new Date(), incident:"", children: [{ purpose: "", time: "", dateFrom: "", dateTo: "", vehicle: "", local: undefined as any, trip: undefined as any, food: undefined as any, hotel: undefined as any, others: undefined as any, advance: undefined as any, remarks: "" }] } as any] });
+      reset({ ...cur, items: [{ name: "", dateFrom:new Date(), dateTo:new Date(), children: [{ incident: "", purpose: "", time: "", dateFrom: "", dateTo: "", vehicle: "", local: undefined as any, trip: undefined as any, food: undefined as any, hotel: undefined as any, others: undefined as any, advance: undefined as any, remarks: "" }] } as any] });
       setRowFiles(makeSingleAttachmentRow());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1455,7 +1442,7 @@ export function BillForm(props: Props) {
         return {
           date: safeDate(r.dateFrom).toISOString(),
           from: r.dateFrom ? format(safeDate(r.dateFrom), "PPP") : "",
-          to: r.dateTo ? format(safeDate(r.dateTo), "PPP") : "",
+          to: r.dateTo ? safeDate(r.dateTo).toISOString() : "",
           transport: "__BILL2__",
           purpose: packed,
           amount: Number(net || 0),
@@ -1476,7 +1463,7 @@ export function BillForm(props: Props) {
         return {
           date: safeDate(r.dateFrom).toISOString(),
           from: r.dateFrom ? format(safeDate(r.dateFrom), "PPP") : "",
-          to: r.dateTo ? format(safeDate(r.dateTo), "PPP") : "",
+          to: r.dateTo ? safeDate(r.dateTo).toISOString() : "",
           transport: "__BILL3__",
           purpose: packed,
           amount: Number(net || 0),
@@ -1524,7 +1511,7 @@ export function BillForm(props: Props) {
           flatRows.push({
             date: safeDate(parent.dateFrom).toISOString(),
             from: parent.dateFrom ? format(safeDate(parent.dateFrom), "PPP") : "",
-            to: parent.dateTo ? format(safeDate(parent.dateTo), "PPP") : "",
+            to: parent.dateTo ? safeDate(parent.dateTo).toISOString() : "",
             transport: "__BILL5__",
             purpose: packed,
             amount: Number(net || 0),
@@ -1649,7 +1636,7 @@ export function BillForm(props: Props) {
   const appendChildToParent = (parentIndex: number) => {
     const items = form.getValues("items") || [];
     const copy = items.map((it:any) => ({ ...it, children: Array.isArray(it.children) ? [...it.children] : [] }));
-    copy[parentIndex].children.push({ purpose: "", time: "", dateFrom: "", dateTo: "", meal: "", local: undefined as any, trip: undefined as any, food: undefined as any, hotel: undefined as any, others: undefined as any, advance: undefined as any, remarks: "" } as any);
+    copy[parentIndex].children.push({ incident: "", purpose: "", time: "", dateFrom: "", dateTo: "", meal: "", local: undefined as any, trip: undefined as any, food: undefined as any, hotel: undefined as any, others: undefined as any, advance: undefined as any, remarks: "" } as any);
     setRowFiles((prev) => {
       const next = prev.map((arr) => arr.slice());
       next[parentIndex] ??= [];
@@ -2294,12 +2281,12 @@ function EditorBill1({
                     <FormItem>
                       <FormControl>
                         <Input
-                          type="number"
-                          step="0.01"
-                          className="no-spinner w-[140px] text-right text-base sm:text-sm"
+                          type="text"
+                          inputMode="numeric"
+                          className="w-[140px] text-right text-base sm:text-sm"
                           required
                           value={field.value ?? ""}
-                          onChange={(e)=> field.onChange(e.target.value === "" ? "" : Number(e.target.value))}
+                          onChange={(e)=> field.onChange(e.target.value === "" ? "" : Math.trunc(Number(e.target.value.replace(/\D/g, ""))))}
                         />
                       </FormControl>
                       <FormMessage/>
@@ -2422,11 +2409,11 @@ function EditorBill2({
                     <FormField control={control} name={`items.${i}.${k}`} render={({ field })=>(
                       <FormItem><FormControl>
                         <Input
-                          type="number"
-                          step="0.01"
-                          className="no-spinner w-[145px] text-right text-base sm:w-[130px] sm:text-sm"
+                          type="text"
+                          inputMode="numeric"
+                          className="w-[145px] text-right text-base sm:w-[130px] sm:text-sm"
                           value={field.value ?? ""}
-                          onChange={(e)=> field.onChange(e.target.value === "" ? "" : Number(e.target.value))}
+                          onChange={(e)=> field.onChange(e.target.value === "" ? "" : Math.trunc(Number(e.target.value.replace(/\D/g, ""))))}
                         />
                       </FormControl><FormMessage/></FormItem>
                     )}/>
@@ -2582,11 +2569,11 @@ function EditorBill3({
                     <FormField control={control} name={`items.${i}.${k}`} render={({ field })=>(
                       <FormItem><FormControl>
                         <Input
-                          type="number"
-                          step="0.01"
-                          className="no-spinner w-[145px] text-right text-base sm:w-[130px] sm:text-sm"
+                          type="text"
+                          inputMode="numeric"
+                          className="w-[145px] text-right text-base sm:w-[130px] sm:text-sm"
                           value={field.value ?? ""}
-                          onChange={(e)=> field.onChange(e.target.value === "" ? "" : Number(e.target.value))}
+                          onChange={(e)=> field.onChange(e.target.value === "" ? "" : Math.trunc(Number(e.target.value.replace(/\D/g, ""))))}
                         />
                       </FormControl><FormMessage/></FormItem>
                     )}/>
@@ -2801,14 +2788,14 @@ function EditorBill4({
                       <FormItem>
                         <FormControl>
                           <Input
-                            type="number"
-                            step="0.01"
-                            className="no-spinner text-right w-[120px]"
+                            type="text"
+                            inputMode="numeric"
+                            className="text-right w-[120px]"
                             required
                             value={field.value ?? ""}
                             onChange={(e)=>
                               field.onChange(
-                                e.target.value === "" ? "" : Number(e.target.value)
+                                e.target.value === "" ? "" : Math.trunc(Number(e.target.value.replace(/\D/g, "")))
                               )
                             }
                           />
@@ -2837,14 +2824,14 @@ function EditorBill4({
                     <FormItem>
                       <FormControl>
                         <Input
-                          type="number"
-                          step="0.01"
-                          className="no-spinner text-right w-[120px]"
+                          type="text"
+                          inputMode="numeric"
+                          className="text-right w-[120px]"
                           required
                           value={field.value ?? ""}
                           onChange={(e)=>
                             field.onChange(
-                              e.target.value === "" ? "" : Number(e.target.value)
+                              e.target.value === "" ? "" : Math.trunc(Number(e.target.value.replace(/\D/g, "")))
                             )
                           }
                         />

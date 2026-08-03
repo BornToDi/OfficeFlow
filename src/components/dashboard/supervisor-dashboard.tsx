@@ -1,18 +1,21 @@
 "use client";
 
 import { useMemo } from "react";
-import type { Bill, User } from "@/lib/types";
+import type { AdvanceSummary, Bill, EmployeeAdvance, User } from "@/lib/types";
 import { BillsTable } from "../bills/bills-table";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import PendingSupervisorChangeRequests, {
   type SupervisorChangeRequest,
 } from "../supervisor/PendingSupervisorChangeRequests";
+import { EmployeeAdvanceCard } from "./employee-advance-panel";
 
 interface SupervisorDashboardProps {
   user: User;
   bills: Bill[];
   users: User[];
   supervisorChangeRequests: SupervisorChangeRequest[];
+  advances: EmployeeAdvance[];
+  advanceSummary?: AdvanceSummary;
 }
 
 function latestBillActivityTime(bill: Bill) {
@@ -27,9 +30,11 @@ export function SupervisorDashboard({
   bills,
   users,
   supervisorChangeRequests,
+  advances,
+  advanceSummary,
 }: SupervisorDashboardProps) {
-  const teamMemberIds = users
-    .filter((u) => String(u.supervisorId) === String(user.id))
+  const teamMembers = users.filter((u) => String(u.supervisorId) === String(user.id));
+  const teamMemberIds = teamMembers
     .map((e) => String(e.id));
 
   // Bills awaiting supervisor approval.
@@ -87,7 +92,7 @@ export function SupervisorDashboard({
 
       <PendingSupervisorChangeRequests requests={supervisorChangeRequests} />
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
@@ -98,6 +103,7 @@ export function SupervisorDashboard({
             <p className="text-xs text-muted-foreground">Bills from your team awaiting approval</p>
           </CardContent>
         </Card>
+        <EmployeeAdvanceCard summary={advanceSummary ?? { employeeId: user.id, totalGranted: 0, usedForPaidBills: 0, balance: 0 }} advances={advances} />
          <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Team Approved</CardTitle>
