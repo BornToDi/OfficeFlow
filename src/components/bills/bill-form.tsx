@@ -1675,6 +1675,11 @@ export function BillForm(props: Props) {
   }
 
   /* ---------- edit/create ---------- */
+  const editorUser: User | undefined = "user" in props ? (props.user as User) : undefined;
+  const hideOwnBillIdentity = !!editorUser &&
+    (editorUser.role === "employee" || editorUser.role === "supervisor") &&
+    (!props.bill || String(props.bill.employeeId) === String(editorUser.id));
+
   return (
     <FormProvider {...form}>
       <form
@@ -1692,7 +1697,7 @@ export function BillForm(props: Props) {
         <input type="hidden" name="employeeIdOrCode" value={effectiveEmployeeCode} />
         <input type="hidden" name="employeeId" value={effectiveEmployeeId} />
 
-        <div className={cn("grid md:grid-cols-2", formatType === "BILL5" ? "gap-x-4 gap-y-2" : "gap-4")}>
+        {!hideOwnBillIdentity ? <div className={cn("grid md:grid-cols-2", formatType === "BILL5" ? "gap-x-4 gap-y-2" : "gap-4")}>
           <FormField control={control} name="companyName" render={({ field }) => (
             <FormItem className="max-sm:hidden">
               <FormLabel>Company Name</FormLabel>
@@ -1730,7 +1735,7 @@ export function BillForm(props: Props) {
               <FormMessage/>
             </FormItem>
           )}/>
-        </div>
+        </div> : null}
 
         <div className="flex flex-col gap-2 md:flex-row md:items-center">
           <label className="text-sm font-medium">Bill Format</label>
@@ -1888,7 +1893,7 @@ export function BillForm(props: Props) {
               <DialogTitle>Review your bill before submission</DialogTitle>
               <p className="text-sm text-muted-foreground">Check the information below. Nothing will be submitted until you confirm.</p>
             </DialogHeader>
-            <div className="min-h-0 overflow-auto rounded-lg bg-slate-100 p-0.5 max-sm:[&>div]:p-2 sm:p-2">
+            <div className={cn("min-h-0 overflow-auto rounded-lg bg-slate-100 p-0.5 max-sm:[&>div]:p-2 sm:p-2", hideOwnBillIdentity && "[&_.bill-header-info]:hidden")}>
               {reviewData ? renderFullReview(reviewData) : null}
             </div>
             <div className="flex flex-col-reverse gap-2 border-t pt-3 sm:flex-row sm:justify-end">
