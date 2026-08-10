@@ -1259,7 +1259,7 @@ export async function getBillsForRolePage(
   } else if (user.role === "followup") {
     where = { status: { in: ["APPROVED_BY_SUPERVISOR", "APPROVED_BY_MANAGEMENT"] } };
   } else if (user.role === "management") {
-    where = { status: "APPROVED_BY_ACCOUNTS" };
+    where = {};
   }
 
   const monthMatch = period?.month?.match(/^(\d{4})-(\d{2})$/);
@@ -1303,7 +1303,33 @@ export async function getBillsForRolePage(
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / take));
-  return { total, page: safePage, pageSize: take, totalPages, rows };
+
+  // Temporary compatibility path until Prisma client is regenerated with `department`.
+  try {
+    const departmentRows = await prisma.$queryRaw<Array<{ id: string; department: string | null }>>`
+      SELECT \`id\`, \`department\`
+      FROM \`User\`
+    `;
+    const departmentById = new Map(departmentRows.map((row) => [row.id, row.department]));
+    const rowsWithDepartments = rows.map((bill) => ({
+      ...bill,
+      employee: bill.employee
+        ? { ...bill.employee, department: departmentById.get(bill.employee.id) ?? null }
+        : bill.employee,
+    }));
+    return { total, page: safePage, pageSize: take, totalPages, rows: rowsWithDepartments };
+  } catch {
+    return {
+      total,
+      page: safePage,
+      pageSize: take,
+      totalPages,
+      rows: rows.map((bill) => ({
+        ...bill,
+        employee: bill.employee ? { ...bill.employee, department: null } : bill.employee,
+      })),
+    };
+  }
 }
 
 /* ========== ROLE-SCOPED PENDING COUNTS ========== */

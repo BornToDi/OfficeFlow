@@ -30,6 +30,7 @@ type PlainBill = {
     role: string;
     supervisorId: string | null;
     employeeCode: string | null;
+    department: string | null;
   } | null;
   amount: number;
   amountInWords: string;
@@ -51,7 +52,7 @@ type PlainBill = {
 export default async function BillsPage({
   searchParams,
 }: {
-  searchParams?: { page?: string; month?: string; week?: string; _debugInfo?: string };
+  searchParams?: Promise<{ page?: string; month?: string; week?: string; _debugInfo?: string }>;
 }) {
   // await the proxy before reading properties
   const sp = await searchParams;
@@ -64,10 +65,11 @@ export default async function BillsPage({
   if (!session) redirect("/");
 
   // ← DB-backed pagination (10 per page)
+  const pageSize = session.user.role === "management" ? 10000 : 10;
   const { rows, totalPages, page: currentPage } = await getBillsForRolePage(
     { id: session.user.id, role: session.user.role },
     page,
-    10,
+    pageSize,
     { month, week }
   );
 
@@ -87,6 +89,7 @@ export default async function BillsPage({
             role: String(b.employee.role),
             supervisorId: b.employee.supervisorId ?? null,
             employeeCode: b.employee.employeeCode ?? null,
+            department: b.employee.department ?? null,
           }
         : null,
       amount: Number(b.amount),
@@ -134,7 +137,7 @@ export default async function BillsPage({
         page={currentPage}
         totalPages={totalPages}
         basePath="/bills"
-        searchParams={searchParams}
+        searchParams={sp}
       />
     </div>
   );
