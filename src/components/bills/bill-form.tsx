@@ -174,7 +174,7 @@ const BILL5_BANKS = [
   "Sonali Bank PLC",
   "International Finance Investment and Commerce Bank PLC",
 ] as const;
-const BILL5_FIELD_CLASS = "h-9 rounded-md border-slate-300 bg-white shadow-sm transition-colors hover:border-slate-400 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15";
+const BILL5_FIELD_CLASS = "h-9 rounded-md border-slate-300 bg-white shadow-sm transition-colors placeholder:font-normal placeholder:text-slate-300 hover:border-slate-400 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 [&[data-placeholder]]:text-slate-300";
 const BILL5_LINE_CARD_CLASSES = [
   "border-blue-200 bg-blue-50/70",
   "border-emerald-200 bg-emerald-50/70",
