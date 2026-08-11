@@ -1267,12 +1267,20 @@ export async function getBillsForRolePage(
   if (monthMatch && Number(monthMatch[2]) >= 1 && Number(monthMatch[2]) <= 12) {
     const year = Number(monthMatch[1]);
     const monthIndex = Number(monthMatch[2]) - 1;
-    const validWeek = Number.isInteger(week) && week >= 1 && week <= 5 ? week : null;
-    const startDay = validWeek ? (validWeek - 1) * 7 + 1 : 1;
-    const rangeStart = new Date(Date.UTC(year, monthIndex, startDay));
-    const nextMonth = new Date(Date.UTC(year, monthIndex + 1, 1));
-    const weekEnd = new Date(Date.UTC(year, monthIndex, startDay + 7));
-    const rangeEnd = validWeek && weekEnd < nextMonth ? weekEnd : nextMonth;
+    // Divide each selected month into three billing periods: 1-10, 11-20,
+    // and 21 through the actual last day of that month.
+    const validWeek = Number.isInteger(week) && week >= 1 && week <= 3 ? week : null;
+    const startDay = validWeek ? [1, 11, 21][validWeek - 1] : 1;
+    // Form dates are saved from Bangladesh local midnight, which is 18:00 UTC
+    // on the previous calendar day. Match those stored instants without moving
+    // bills across period boundaries.
+    const dhakaOffsetMs = 6 * 60 * 60 * 1000;
+    const rangeStart = new Date(Date.UTC(year, monthIndex, startDay) - dhakaOffsetMs);
+    const nextMonth = new Date(Date.UTC(year, monthIndex + 1, 1) - dhakaOffsetMs);
+    const periodEnd = validWeek && validWeek < 3
+      ? new Date(Date.UTC(year, monthIndex, startDay + 10) - dhakaOffsetMs)
+      : nextMonth;
+    const rangeEnd = validWeek ? periodEnd : nextMonth;
     const roleScope = where;
     where = {
       AND: [

@@ -250,6 +250,11 @@ export function BillsDriveView({ bills, users, initialMonth, initialWeek, viewer
   const searchParams = useSearchParams();
   const isManagement = viewerRole === "management";
   const hideCompanyAddress = viewerRole === "employee" || viewerRole === "supervisor";
+  const selectedMonthLastDay = useMemo(() => {
+    const match = initialMonth.match(/^(\d{4})-(\d{2})$/);
+    if (!match) return 31;
+    return new Date(Number(match[1]), Number(match[2]), 0).getDate();
+  }, [initialMonth]);
 
   const updatePeriod = (month: string, week?: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -457,15 +462,13 @@ export function BillsDriveView({ bills, users, initialMonth, initialWeek, viewer
             value={initialWeek ?? ""}
             disabled={!initialMonth}
             onChange={(e) => updatePeriod(initialMonth, e.target.value)}
-            aria-label="Filter by week of month"
+            aria-label="Filter by billing period"
             className="h-9 rounded-md border bg-background px-2 text-sm disabled:opacity-50"
           >
-            <option value="">All weeks</option>
-            <option value="1">Week 1 (1-7)</option>
-            <option value="2">Week 2 (8-14)</option>
-            <option value="3">Week 3 (15-21)</option>
-            <option value="4">Week 4 (22-28)</option>
-            <option value="5">Week 5 (29-end)</option>
+            <option value="">All periods</option>
+            <option value="1">Period 1 (1-10)</option>
+            <option value="2">Period 2 (11-20)</option>
+            <option value="3">Period 3 (21-{selectedMonthLastDay})</option>
           </select>
           <select
             value={status}

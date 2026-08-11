@@ -187,6 +187,35 @@ const billFormSchema = z.object({
 });
 type BillFormValues = z.infer<typeof billFormSchema>;
 
+function calculateBillTotals(formatType: BillFormat, items: BillFormValues["items"] | undefined) {
+  const rows = (items || []) as any[];
+  let total = 0;
+  if (formatType === "BILL1") total = rows.reduce((sum, row) => sum + (Number(row?.amount) || 0), 0);
+  else if (formatType === "BILL5") total = rows.reduce((sum, parent) => sum + (parent?.children || []).reduce(
+    (childSum: number, row: RowB5Child) => childSum + (Number(row.local) || 0) + (Number(row.trip) || 0) +
+      (Number(row.food) || 0) + (Number(row.hotel) || 0) + (Number(row.others) || 0) - (Number(row.advance) || 0), 0), 0);
+  else if (formatType === "BILL2") total = rows.reduce((sum, row) => sum + (Number(row.local) || 0) +
+    (Number(row.trip) || 0) + (Number(row.food) || 0) + (Number(row.hotel) || 0) +
+    (Number(row.others) || 0) - (Number(row.advance) || 0), 0);
+  else total = rows.reduce((sum, row) => sum + (Number(row.food) || 0) + (Number(row.hotel) || 0) +
+    (Number(row.others) || 0) - (Number(row.advance) || 0), 0);
+  return { total, words: numberToWords(total) + " Only" };
+}
+
+function LiveBillTotal({ control, formatType }: { control: any; formatType: BillFormat }) {
+  const items = useWatch({ control, name: "items" });
+  const totals = calculateBillTotals(formatType, items);
+  return (
+    <div className="rounded-lg border bg-muted/20 p-4">
+      <p className="text-muted-foreground">{totals.words}</p>
+      <div className="mt-2 flex items-center justify-between font-semibold">
+        <span>Total</span>
+        <span>{new Intl.NumberFormat("en-IN", { style: "currency", currency: "BDT" }).format(totals.total)}</span>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Helpers ---------- */
 const safeDate = (v?: string|Date|null) => {
   if (v instanceof Date) return isValid(v) ? v : new Date();
@@ -423,6 +452,46 @@ function BankColumnToggle({ checked, onChange }: { checked: boolean; onChange: (
   );
 }
 
+function Bill5ChildNet({ control, parentIndex, childIndex }: { control: any; parentIndex: number; childIndex: number }) {
+  const value = useWatch({
+    control,
+    name: `items.${parentIndex}.children.${childIndex}` as any,
+  }) as RowB5Child | undefined;
+  const total = (Number(value?.local) || 0) + (Number(value?.trip) || 0) +
+    (Number(value?.food) || 0) + (Number(value?.hotel) || 0) +
+    (Number(value?.others) || 0) - (Number(value?.advance) || 0);
+  return <>{total.toFixed(2)}</>;
+}
+
+function AutoCloseDatePicker({ field, className, disableFuture = false }: { field: any; className?: string; disableFuture?: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <FormControl>
+          <Button type="button" variant="outline" className={cn("w-[190px] justify-start pl-3 text-left", className, !field.value && "text-muted-foreground")}>
+            {field.value ? format(new Date(field.value), "PPP") : "Pick a date"}
+            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+          </Button>
+        </FormControl>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={field.value ? new Date(field.value) : undefined}
+          onSelect={(date) => {
+            if (!date) return;
+            field.onChange(date);
+            setOpen(false);
+          }}
+          disabled={(date) => date < new Date("1900-01-01") || (disableFuture && date > new Date())}
+          initialFocus
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function Bill5ChildTable({
   control,
   parentIndex,
@@ -436,10 +505,6 @@ function Bill5ChildTable({
   onPickFile: (parentIndex: number, childIndex: number, file: File | null) => void;
   selectedColumns: Bill5OptionalColumn[];
 }) {
-  const watchedChildren = useWatch({
-    control,
-    name: `items.${parentIndex}.children` as any,
-  }) as RowB5Child[] | undefined;
   const { fields: childFields, append: appendChild, remove: removeChild } = useFieldArray({ control, name: `items.${parentIndex}.children` as any });
 
   return (
@@ -448,8 +513,8 @@ function Bill5ChildTable({
         <Table>
           <TableHeader className="bg-slate-50/90">
             <TableRow className="border-slate-200 hover:bg-transparent">
-              {selectedColumns.includes("bankName") ? <TableHead>Bank Name</TableHead> : null}
               <TableHead className="min-w-[150px]">Incident</TableHead>
+              {selectedColumns.includes("bankName") ? <TableHead>Bank Name</TableHead> : null}
               <TableHead>Purpose</TableHead>
               <TableHead className="min-w-[120px]">From</TableHead>
               <TableHead className="min-w-[120px]">To</TableHead>
@@ -468,6 +533,11 @@ function Bill5ChildTable({
           <TableBody>
             {childFields.map((cf, ci) => (
               <TableRow key={cf.id} className="border-slate-200 hover:bg-slate-50/40">
+                <TableCell>
+                  <FormField control={control} name={`items.${parentIndex}.children.${ci}.incident`} render={({ field }) => (
+                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="Incident (optional)" className={cn("w-[150px]", BILL5_FIELD_CLASS)} /></FormControl><FormMessage/></FormItem>
+                  )} />
+                </TableCell>
                 {selectedColumns.includes("bankName") ? (
                   <TableCell>
                     <FormField control={control} name={`items.${parentIndex}.children.${ci}.bankName`} render={({ field }) => (
@@ -489,11 +559,6 @@ function Bill5ChildTable({
                     )} />
                   </TableCell>
                 ) : null}
-                <TableCell>
-                  <FormField control={control} name={`items.${parentIndex}.children.${ci}.incident`} render={({ field }) => (
-                    <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="Incident (optional)" className={cn("w-[150px]", BILL5_FIELD_CLASS)} /></FormControl><FormMessage/></FormItem>
-                  )} />
-                </TableCell>
                 <TableCell>
                   <FormField control={control} name={`items.${parentIndex}.children.${ci}.purpose`} render={({ field }) => (
                     <FormItem><FormControl><Input {...field} autoComplete="off" placeholder="Purpose" className={cn("w-[220px]", BILL5_FIELD_CLASS)} /></FormControl><FormMessage/></FormItem>
@@ -555,12 +620,7 @@ function Bill5ChildTable({
                   </TableCell>
                 ))}
                 <TableCell className="text-right">
-                  {(() => {
-                    const v = watchedChildren?.[ci] || {} as RowB5Child;
-                    const sum = (Number(v.local)||0)+(Number(v.trip)||0)+(Number(v.food)||0)+(Number(v.hotel)||0)+(Number(v.others)||0);
-                    const net = sum - (Number(v.advance)||0);
-                    return net.toFixed(2);
-                  })()}
+                  <Bill5ChildNet control={control} parentIndex={parentIndex} childIndex={ci} />
                 </TableCell>
                 <TableCell>
                   <FormField control={control} name={`items.${parentIndex}.children.${ci}.remarks`} render={({ field }) => (
@@ -674,41 +734,7 @@ function EditorBill5({
                         name={`items.${i}.${k}`}
                         render={({ field }) => (
                           <FormItem>
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <FormControl>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    className={cn(
-                                      "w-[150px] justify-start pl-3 text-left",
-                                      BILL5_FIELD_CLASS,
-                                      !field.value && "text-muted-foreground"
-                                    )}
-                                  >
-                                    {field.value
-                                      ? format(new Date(field.value), "PPP")
-                                      : "Pick a date"}
-                                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                                  </Button>
-                                </FormControl>
-                              </PopoverTrigger>
-
-                              <PopoverContent className="w-auto p-0" align="start">
-                                <Calendar
-                                  mode="single"
-                                  selected={field.value ? new Date(field.value) : undefined}
-                                  onSelect={(date) => {
-                                    // react-day-picker returns undefined when the
-                                    // selected day is clicked again. Bill 5 dates
-                                    // are required, so keep the existing value
-                                    // instead of silently clearing the field.
-                                    if (date) field.onChange(date);
-                                  }}
-                                  disabled={(d) => d < new Date("1900-01-01")}
-                                />
-                              </PopoverContent>
-                            </Popover>
+                            <AutoCloseDatePicker field={field} className={cn("w-[150px]", BILL5_FIELD_CLASS)} />
                             <FormMessage />
                           </FormItem>
                         )}
@@ -1174,7 +1200,10 @@ export function BillForm(props: Props) {
     };
   }, [props, formatType]);
 
-  const form = useForm<BillFormValues>({ resolver: zodResolver(billFormSchema), defaultValues: defaults, mode: "onChange" });
+  // Full-schema validation on every keypress becomes increasingly expensive as
+  // rows grow. Validate when the user submits/saves; field errors still update
+  // after a failed submit through reValidateMode.
+  const form = useForm<BillFormValues>({ resolver: zodResolver(billFormSchema), defaultValues: defaults, mode: "onSubmit", reValidateMode: "onBlur" });
   const { control, handleSubmit, reset } = form;
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
   const supervisors = "supervisors" in props ? props.supervisors ?? [] : [];
@@ -1205,54 +1234,6 @@ export function BillForm(props: Props) {
   const [rowFiles, setRowFiles] = useState<(File | null)[][]>(
     Array.isArray(defaults.items) ? (defaults.items as any[]).map((it) => (it.children ? Array(it.children.length).fill(null) : [null])) : []
   );
-
-  // Watch rows for live totals
-  // `watch` at the form root reliably tracks nested Bill 5 child fields. A
-  // broad `useWatch("items")` subscription could miss child-array updates,
-  // leaving row and bill totals at 0 while the input showed the new amount.
-  const watchedItems = form.watch("items");
-
-  // Recalculate on every watched-field render. React Hook Form can update a
-  // nested child while retaining the same parent-array reference, so memoizing
-  // by `watchedItems` can leave the displayed total stale.
-  const totals = (() => {
-    if (formatType === "BILL1") {
-      const rows = (watchedItems as RowB1[]) || [];
-      const total = rows.reduce((s, r) => s + (Number(r?.amount)||0), 0);
-      return { total, words: numberToWords(total) + " Only" };
-    }
-    if (formatType === "BILL2") {
-      const rows = (watchedItems as RowB2[]) || [];
-      const total = rows.reduce((acc, r) => {
-        const sum = (Number(r?.local)||0)+(Number(r?.trip)||0)+(Number(r?.food)||0)+(Number(r?.hotel)||0)+(Number(r?.others)||0);
-        return acc + (sum - (Number(r?.advance)||0));
-      }, 0);
-      return { total, words: numberToWords(total) + " Only" };
-    }
-    if (formatType === "BILL3") {
-      const rows = (watchedItems as RowB3[]) || [];
-      const total = rows.reduce((acc, r) => {
-        const sum = (Number(r?.food)||0)+(Number(r?.hotel)||0)+(Number(r?.others)||0);
-        return acc + (sum - (Number(r?.advance)||0));
-      }, 0);
-      return { total, words: numberToWords(total) + " Only" };
-    }
-      if (formatType === "BILL5") {
-        const parents = (watchedItems as RowB5[]) || [];
-        const total = parents.reduce((acc, p) => {
-          const sumChildren = (p.children || []).reduce((s, c) => s + ((Number(c.local)||0)+(Number(c.trip)||0)+(Number(c.food)||0)+(Number(c.hotel)||0)+(Number(c.others)||0) - (Number(c.advance)||0)), 0);
-          return acc + sumChildren;
-        }, 0);
-        return { total, words: numberToWords(total) + " Only" };
-      }
-    // BILL4
-    const rows = (watchedItems as RowB4[]) || [];
-    const total = rows.reduce((acc, r) => {
-      const sum = (Number(r?.food)||0)+(Number(r?.hotel)||0)+(Number(r?.others)||0);
-      return acc + (sum - (Number(r?.advance)||0));
-    }, 0);
-    return { total, words: numberToWords(total) + " Only" };
-  })();
 
   const isSupervisorUser = "user" in props && (props.user as any)?.role === "supervisor";
   const makeSingleAttachmentRow = (): (File | null)[][] => [[null as File | null]];
@@ -1415,6 +1396,7 @@ export function BillForm(props: Props) {
   /* ---------- submit payload ---------- */
   const toServerFD = (data: BillFormValues) => {
     const fd = new FormData();
+    const totals = calculateBillTotals(formatType, data.items);
     if (data.billId) fd.append("billId", data.billId);
     fd.append("companyName", (data.companyName ?? "") as string);
     fd.append("companyAddress", (data.companyAddress ?? "") as string);
@@ -1544,6 +1526,7 @@ export function BillForm(props: Props) {
 
   const buildReviewBill = (data: BillFormValues): BillViewData => {
     const payload = toServerFD(data);
+    const totals = calculateBillTotals(formatType, data.items);
     const items = JSON.parse(String(payload.get("items") || "[]")).map((item: any, index: number) => ({
       id: `review-${index}`,
       ...item,
@@ -1834,18 +1817,7 @@ export function BillForm(props: Props) {
           />
         )} */}
 
-        <div className={cn("flex flex-wrap items-start justify-between", formatType === "BILL5" ? "gap-2" : "gap-4")}>
-          <div>
-            <p className="font-medium">Amount in Words:</p>
-            <p className="text-muted-foreground">{totals.words}</p>
-          </div>
-          <div className="w-full max-w-xs space-y-2">
-            <div className="flex items-center justify-between text-xl font-bold">
-              <span>Total</span>
-              <span>{new Intl.NumberFormat("en-IN", { style: "currency", currency: "BDT" }).format(totals.total)}</span>
-            </div>
-          </div>
-        </div>
+        <LiveBillTotal control={control} formatType={formatType} />
 
         {isSupervisorUser && (
           <FormField
@@ -2379,19 +2351,7 @@ function EditorBill2({
                   <TableCell className="p-1" key={k}>
                     <FormField control={control} name={`items.${i}.${k}`} render={({ field })=>(
                       <FormItem>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button type="button" variant="outline" className={cn("w-[190px] justify-start pl-3 text-left", !field.value && "text-muted-foreground")}>
-                                {field.value ? format(new Date(field.value), "PPP") : "Pick a date"}
-                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar mode="single" selected={field.value ? new Date(field.value) : new Date()} onSelect={field.onChange} disabled={(d)=> d<new Date("1900-01-01")} />
-                          </PopoverContent>
-                        </Popover>
+                        <AutoCloseDatePicker field={field} />
                         <FormMessage/>
                       </FormItem>
                     )}/>
@@ -2538,19 +2498,7 @@ function EditorBill3({
                   <TableCell className="p-1" key={k}>
                     <FormField control={control} name={`items.${i}.${k}`} render={({ field })=>(
                       <FormItem>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button type="button" variant="outline" className={cn("w-[190px] justify-start pl-3 text-left", !field.value && "text-muted-foreground")}>
-                                {field.value ? format(new Date(field.value), "PPP") : "Pick a date"}
-                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar mode="single" selected={field.value ? new Date(field.value) : new Date()} onSelect={field.onChange} disabled={(d)=> d<new Date("1900-01-01")} />
-                          </PopoverContent>
-                        </Popover>
+                        <AutoCloseDatePicker field={field} />
                         <FormMessage/>
                       </FormItem>
                     )}/>

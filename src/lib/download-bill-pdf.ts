@@ -55,7 +55,7 @@ function tableFor(items: PdfItem[]) {
     return {
       head: ["No.", "Date From", "Date To", "Incident", "Time", "From", "To", "Purpose", "Vehicle", ...moneyColumns.map((key) => labels[key]), "Net", "Remarks"],
       body: rows.map(({ item, data }, index) => [
-        index + 1, date(item.date), item.to || dash, data.incident || dash, data.time || dash,
+        index + 1, date(item.date), date(item.to), data.incident || dash, data.time || dash,
         data.dateFrom || dash, data.dateTo || dash, data.purpose || dash, data.vehicle || dash,
         ...moneyColumns.map((key) => number(data[key])), number(data.net ?? item.amount), data.remarks || dash,
       ]),
@@ -66,7 +66,7 @@ function tableFor(items: PdfItem[]) {
     const rows = items.map((item) => ({ item, data: json(item.purpose) }));
     return {
       head: ["No.", "From", "To", "Date From", "Date To", "Purpose", "Local", "Trip", "Others", "Advance", "Net", "Remarks"],
-      body: rows.map(({ item, data }, index) => [index + 1, data.from || dash, data.to || dash, date(item.date), item.to || dash, data.purpose || dash, number(data.local), number(data.trip), number(data.others), number(data.advance), number(data.net ?? item.amount), data.remarks || dash]),
+      body: rows.map(({ item, data }, index) => [index + 1, data.from || dash, data.to || dash, date(item.date), date(item.to), data.purpose || dash, number(data.local), number(data.trip), number(data.others), number(data.advance), number(data.net ?? item.amount), data.remarks || dash]),
     };
   }
 
@@ -74,7 +74,7 @@ function tableFor(items: PdfItem[]) {
     const rows = items.map((item) => ({ item, data: json(item.purpose) }));
     return {
       head: ["No.", "From", "To", "Date From", "Date To", "Purpose", "Food", "Hotel", "Others", "Advance", "Net", "Remarks"],
-      body: rows.map(({ item, data }, index) => [index + 1, data.from || dash, data.to || dash, date(item.date), item.to || dash, data.purpose || dash, number(data.food), number(data.hotel), number(data.others), number(data.advance), number(data.net ?? item.amount), data.remarks || dash]),
+      body: rows.map(({ item, data }, index) => [index + 1, data.from || dash, data.to || dash, date(item.date), date(item.to), data.purpose || dash, number(data.food), number(data.hotel), number(data.others), number(data.advance), number(data.net ?? item.amount), data.remarks || dash]),
     };
   }
 
