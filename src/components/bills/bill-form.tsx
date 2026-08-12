@@ -786,7 +786,7 @@ function EditorBill5({
                         name={`items.${i}.${k}`}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className={cn("text-xs text-muted-foreground", hideEmptyColumns && "md:sr-only")}>{k === "dateFrom" ? "Date From" : "Date To"}</FormLabel>
+                            <FormLabel className="sr-only">{k === "dateFrom" ? "Date From" : "Date To"}</FormLabel>
                             <AutoCloseDatePicker field={field} compact={hideEmptyColumns} className={cn(hideEmptyColumns ? "w-full px-2 text-xs" : "w-[150px]", "max-md:w-full", BILL5_FIELD_CLASS)} />
                             <FormMessage />
                           </FormItem>
