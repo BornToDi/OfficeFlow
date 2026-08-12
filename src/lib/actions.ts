@@ -756,6 +756,7 @@ async function parseBillForm(formData: FormData, currentUserRole: "employee" | "
     const parsed = JSON.parse(itemsJSON);
     if (!Array.isArray(parsed)) throw new Error("Items must be an array");
     items = parsed.map((it: any) => ({
+      id: typeof it.id === "string" && it.id.trim() ? it.id.trim() : undefined,
       date: new Date(String(it.date)).toISOString(),
       from: String(it.from ?? ""),
       to: String(it.to ?? ""),
@@ -804,14 +805,31 @@ async function parseBillForm(formData: FormData, currentUserRole: "employee" | "
 
 function preserveUneditedBill5Dates(existingBill: any, parsed: any) {
   if (parsed.formatType !== "BILL5") return;
+  const existingItemsById = new Map(existingBill?.items?.map((item: any) => [item.id, item]) ?? []);
   parsed.items.forEach((item: any, index: number) => {
     if (parsed.bill5DateRowsEdited[index]) return;
-    const existing = existingBill?.items?.[index];
+    const existing: any = existingItemsById.get(item.id) ?? existingBill?.items?.[index];
     if (!existing) return;
     item.date = new Date(existing.date).toISOString();
     item.from = existing.from ?? "";
     item.to = existing.to ?? "";
   });
+}
+
+function canEditExistingBill(existingBill: any, user: { id: string; role: string }) {
+  const status = String(existingBill?.status || "").toUpperCase();
+  const owner = existingBill?.employeeId === user.id;
+  const directSupervisor = existingBill?.employee?.supervisorId === user.id;
+  const assignedSupervisor = (existingBill?.supervisorId ?? existingBill?.employee?.supervisorId ?? null) === user.id;
+  const editableByOwnerOrSupervisor =
+    status === "DRAFT" || status.startsWith("REJECTED_") || status.includes("RETURN") || status.includes("CHANGE");
+  return (editableByOwnerOrSupervisor && (owner || directSupervisor)) ||
+    (status === "SUBMITTED" && user.role === "supervisor" && assignedSupervisor);
+}
+
+function assertCanEditExistingBill(existingBill: any, user: { id: string; role: string }) {
+  if (!existingBill) throw new Error("Bill not found.");
+  if (!canEditExistingBill(existingBill, user)) throw new Error("You are not allowed to edit this bill.");
 }
 
 async function enforceBill5GmRoute(parsed: { formatType: string; supervisorId: string }, user: { id: string; email?: string | null; name?: string | null; designation?: string | null }) {
@@ -868,8 +886,10 @@ export async function saveDraft(
 
     if (parsed.existingBillId) {
       const existingBill = await getBillById(parsed.existingBillId);
+      assertCanEditExistingBill(existingBill, session.user);
+      const existingItemsById = new Map(existingBill?.items.map((item) => [item.id, item]) ?? []);
       parsed.items.forEach((item: any, index: number) => {
-        if (!item.attachmentUrl) item.attachmentUrl = existingBill?.items[index]?.attachmentUrl ?? null;
+        if (!item.attachmentUrl) item.attachmentUrl = existingItemsById.get(item.id)?.attachmentUrl ?? existingBill?.items[index]?.attachmentUrl ?? null;
       });
       preserveUneditedBill5Dates(existingBill, parsed);
       const canPreserveSubmittedStatus =
@@ -951,8 +971,10 @@ export async function submitBill(
 
 if (parsed.existingBillId) {
   const existingBill = await getBillById(parsed.existingBillId);
+  assertCanEditExistingBill(existingBill, session.user);
+  const existingItemsById = new Map(existingBill?.items.map((item) => [item.id, item]) ?? []);
   parsed.items.forEach((item: any, index: number) => {
-    if (!item.attachmentUrl) item.attachmentUrl = existingBill?.items[index]?.attachmentUrl ?? null;
+    if (!item.attachmentUrl) item.attachmentUrl = existingItemsById.get(item.id)?.attachmentUrl ?? existingBill?.items[index]?.attachmentUrl ?? null;
   });
   preserveUneditedBill5Dates(existingBill, parsed);
   const canPreserveSubmittedStatus =

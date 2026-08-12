@@ -114,7 +114,7 @@ function formatDateISO(iso: string) {
   }
 }
 
-function StatusPill({ status }: { status: Status }) {
+function StatusPill({ status, compact = false }: { status: Status; compact?: boolean }) {
   const color =
     status === "DRAFT"
       ? "bg-slate-100 text-slate-700"
@@ -132,7 +132,7 @@ function StatusPill({ status }: { status: Status }) {
 
   const label = status.replaceAll("_", " ").toLowerCase();
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${color}`}>
+    <span className={`inline-flex items-center justify-center rounded-full font-medium ${compact ? "max-w-[92px] px-1.5 py-0.5 text-center text-[9px] leading-[11px]" : "px-2 py-0.5 text-xs"} ${color}`}>
       {label.charAt(0).toUpperCase() + label.slice(1)}
     </span>
   );
@@ -764,7 +764,7 @@ export function BillsDriveView({ bills, users, initialMonth, initialWeek, viewer
       )}
 
       <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
-        <div className="grid grid-cols-12 bg-muted/40 px-3 py-2 text-xs font-semibold text-slate-700">
+        <div className="hidden grid-cols-12 bg-muted/40 px-3 py-2 text-xs font-semibold text-slate-700 sm:grid">
           <div className={isManagement ? "col-span-3" : "col-span-4"}>Name</div>
           <div className={isManagement ? "col-span-2" : "col-span-3"}>Owner</div>
           {isManagement && <div className="col-span-2">Department</div>}
@@ -785,26 +785,47 @@ export function BillsDriveView({ bills, users, initialMonth, initialWeek, viewer
               <li key={bill.id} className="border-t">
                 <button
                   onClick={() => setOpenId(isOpen ? null : bill.id)}
-                  className={`grid w-full grid-cols-12 items-center px-3 py-2 text-left text-sm transition-colors ${departmentRowColor(ownerDepartment)}`}
+                  className={`w-full px-3 py-3 text-left text-sm transition-colors sm:grid sm:grid-cols-12 sm:items-center sm:py-2 ${departmentRowColor(ownerDepartment)}`}
                 >
-                  <div className={isManagement ? "col-span-3 truncate" : "col-span-4 truncate"}>
-                    <span className="font-medium">{bill.companyName}</span>
-                    {!hideCompanyAddress && <span className="text-muted-foreground"> - {bill.companyAddress}</span>}
-                  </div>
-                  <div className={isManagement ? "col-span-2 truncate" : "col-span-3 truncate"}>{ownerName}</div>
-                  {isManagement && (
-                    <div className="col-span-2 min-w-0 pr-2">
-                      <DepartmentPill department={ownerDepartment} />
+                  <div className="min-w-0 sm:hidden">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-slate-950">{bill.companyName}</p>
+                        <p className="mt-0.5 truncate text-xs text-slate-600">
+                          {ownerName} · <span className="font-mono">{owner?.employeeCode ?? "No code"}</span>
+                        </p>
+                      </div>
+                      <StatusPill status={bill.status} compact />
                     </div>
-                  )}
-                  <div className="col-span-1 truncate">
-                    <span className="font-mono text-xs">{owner?.employeeCode ?? "-"}</span>
+                    <div className="mt-2 flex items-end justify-between gap-3 border-t border-slate-200/70 pt-2">
+                      <div className="min-w-0 text-xs text-slate-600">
+                        {isManagement && <DepartmentPill department={ownerDepartment} />}
+                        <p className={isManagement ? "mt-1" : ""}>Updated {formatDateISO(bill.updatedAt)}</p>
+                      </div>
+                      <p className="shrink-0 font-bold text-slate-950">{formatBDT(bill.amount)}</p>
+                    </div>
                   </div>
-                  <div className="col-span-2">
-                    <StatusPill status={bill.status} />
+
+                  <div className="hidden contents sm:contents">
+                    <div className={isManagement ? "col-span-3 truncate" : "col-span-4 truncate"}>
+                      <span className="font-medium">{bill.companyName}</span>
+                      {!hideCompanyAddress && <span className="text-muted-foreground"> - {bill.companyAddress}</span>}
+                    </div>
+                    <div className={isManagement ? "col-span-2 truncate" : "col-span-3 truncate"}>{ownerName}</div>
+                    {isManagement && (
+                      <div className="col-span-2 min-w-0 pr-2">
+                        <DepartmentPill department={ownerDepartment} />
+                      </div>
+                    )}
+                    <div className="col-span-1 truncate">
+                      <span className="font-mono text-xs">{owner?.employeeCode ?? "-"}</span>
+                    </div>
+                    <div className="col-span-2">
+                      <StatusPill status={bill.status} />
+                    </div>
+                    <div className="col-span-1 text-xs text-slate-700">{formatDateISO(bill.updatedAt)}</div>
+                    <div className="col-span-1 text-right font-semibold">{formatBDT(bill.amount)}</div>
                   </div>
-                  <div className="col-span-1 text-xs text-slate-700">{formatDateISO(bill.updatedAt)}</div>
-                  <div className="col-span-1 text-right font-semibold">{formatBDT(bill.amount)}</div>
                 </button>
 
                 {isOpen && <ExpandedBillDetails bill={bill} ownerName={ownerName} />}

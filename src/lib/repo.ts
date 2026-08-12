@@ -606,7 +606,7 @@ export async function getBillById(id: string) {
     where: { id },
     include: {
       employee: { select: { id: true, name: true, email: true, designation: true, employeeCode: true, supervisorId: true, department: true } },
-      items: true,
+      items: { orderBy: { id: "asc" } },
       history: {
         include: {
           actor: { select: { id: true, name: true, email: true, role: true, supervisorId: true } },
@@ -946,6 +946,7 @@ export async function updateBillDraft(
     amount: number;
     amountInWords: string;
     items?: {
+      id?: string;
       date: string;
       from: string;
       to: string;
@@ -987,6 +988,7 @@ export async function updateBillDraft(
           input.items.map((it) =>
             tx.billItem.create({
               data: {
+                ...(it.id ? { id: it.id } : {}),
                 billId,
                 date: new Date(it.date),
                 from: it.from,

@@ -46,21 +46,24 @@ export default async function BillDetail({
   params,
   searchParams,
 }: {
-  params: Promise<{ id: string }> | { id: string };
-  searchParams?: { edit?: string; _debugInfo?: string };
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ edit?: string; _debugInfo?: string }>;
 }) {
   const session = await getSession();
   if (!session) return <div className="p-6 text-sm">Not signed in.</div>;
 
-  const { id } = await Promise.resolve(params);
+  const { id } = await params;
   // `searchParams` may be a thenable in some Next.js runtimes — await if needed.
-  const sp = searchParams && typeof (searchParams as any).then === "function" ? await (searchParams as any) : searchParams;
+  const sp = searchParams ? await searchParams : undefined;
   const wantsEdit = (sp?.edit ?? "") === "1";
 
   const dbBill = await getBillById(id);
   if (!dbBill) return <div className="p-6 text-sm">Bill not found.</div>;
 
   const role = String(session.user.role);
+  // Start this independent query early so edit navigation does not wait for it
+  // after Bill-5 warning processing finishes.
+  const supervisorsPromise = listSupervisors();
   const showEmployeeSubmittedAmount = role === "employee" && !isAccountsApproved(dbBill.status);
   const visibleAmount = showEmployeeSubmittedAmount
     ? employeeSubmittedAmount(dbBill.history, Number(dbBill.amount))
@@ -149,7 +152,7 @@ export default async function BillDetail({
 
 
   // supervisors for forwarding dropdown
-  const supervisors = await listSupervisors();
+  const supervisors = await supervisorsPromise;
   const otherSupervisors = filterForwardingSupervisors(supervisors, session.user.id);
   const gmSupervisor = supervisors.find((supervisor) =>
     isGmIdentity(supervisor)
@@ -327,7 +330,7 @@ async function approveOrForward(formData: FormData) {
           <div className="flex items-center gap-2">
             {!showEdit ? (
               <Button asChild>
-                <Link href={`/bills/${dbBill.id}?edit=1`}>Edit</Link>
+                <Link href={`/bills/${dbBill.id}?edit=1`} prefetch>Edit</Link>
               </Button>
             ) : (
               <Button variant="secondary" asChild>

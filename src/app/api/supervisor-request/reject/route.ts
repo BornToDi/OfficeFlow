@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
       session.user.id,
       reason
     );
+    if (!rejectedRequest?.employee) throw new Error("Supervisor change request was not found.");
 
     return NextResponse.json({
       success: true,

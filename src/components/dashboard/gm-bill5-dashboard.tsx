@@ -53,7 +53,7 @@ export function GmBill5Dashboard({ user, bills, users, advances, advanceSummary 
   const total = filtered.reduce((sum, bill) => sum + Number(bill.amount || 0), 0);
   return <div className="space-y-6">
     <div><h1 className="text-3xl font-bold">Bill-5 GM Control Center</h1><p className="text-muted-foreground">Review every department, hold exceptions, and send approved bills to Accounts in one action.</p></div>
-    <div className="grid gap-4 md:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-4 [&>div]:min-w-0">
       <Metric title="Bills in view" value={String(filtered.length)} />
       <Metric title="Waiting for your approval" value={String(eligible.length)} />
       <EmployeeAdvanceCard summary={advanceSummary ?? { employeeId: user.id, totalGranted: 0, usedForPaidBills: 0, balance: 0 }} advances={advances} />

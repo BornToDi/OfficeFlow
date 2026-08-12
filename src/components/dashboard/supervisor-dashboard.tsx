@@ -92,7 +92,7 @@ export function SupervisorDashboard({
 
       <PendingSupervisorChangeRequests requests={supervisorChangeRequests} />
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-5 [&>div]:min-w-0">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>

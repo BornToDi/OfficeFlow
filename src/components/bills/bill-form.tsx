@@ -113,6 +113,7 @@ type RowB4 = {
 
 /* Row shape for combined Bill-5 (merge of Bill-2, Bill-3, Bill-4) */
 type RowB5Child = {
+  itemId?: string;
   incident: string;
   purpose: string;
   bankName?: string;
@@ -515,19 +516,13 @@ function Bill5ChildTable({
   hideEmptyColumns?: boolean;
 }) {
   const { fields: childFields, append: appendChild, remove: removeChild } = useFieldArray({ control, name: `items.${parentIndex}.children` as any });
-  const parentChildren = useWatch({
-    control,
-    name: `items.${parentIndex}.children` as any,
-  }) as RowB5Child[] | undefined;
-  const visibleSelectedColumns = hideEmptyColumns ? selectedColumns.filter((column) =>
-    (parentChildren || []).some((child) =>
-      column === "bankName"
-        ? String(child?.bankName || "").trim().length > 0
-        : Number(child?.[column] || 0) !== 0
-    )
-  ) : selectedColumns;
-  const showLocalColumn = !hideEmptyColumns ||
-    (parentChildren || []).some((child) => Number(child?.local || 0) !== 0);
+  // A selected column must stay visible even while all of its inputs are empty.
+  // In edit mode a newly checked column has no value yet, so filtering selected
+  // columns by their current values made it impossible to enter the first value.
+  const visibleSelectedColumns = selectedColumns;
+  // Keep Local available without subscribing this entire table to every child
+  // keystroke. Individual fields remain independently controlled by RHF.
+  const showLocalColumn = true;
 
   return (
     <div className="min-w-0 w-full max-w-full [&_th]:h-9 [&_th]:px-2 [&_td]:px-1 [&_td]:py-1">
@@ -636,7 +631,15 @@ function Bill5ChildTable({
                     <FormField control={control} name={`items.${parentIndex}.children.${ci}.${k}`} render={({ field }) => (
                       <FormItem>
                         <FormControl>
-                          <Input type="text" inputMode="numeric" placeholder={k === "local" ? "Local con" : BILL5_OPTIONAL_COLUMNS.find((column) => column.key === k)?.label} aria-label={k === "local" ? "Local conveyance" : k} className={cn(hideEmptyColumns ? "w-full" : "w-[90px]", "text-right max-md:w-full", BILL5_FIELD_CLASS)} value={field.value ?? ""} onChange={(e)=> field.onChange(e.target.value === "" ? "" : Math.trunc(Number(e.target.value.replace(/\D/g, ""))))} />
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder={k === "local" ? "Local con" : BILL5_OPTIONAL_COLUMNS.find((column) => column.key === k)?.label}
+                            aria-label={k === "local" ? "Local conveyance" : BILL5_OPTIONAL_COLUMNS.find((column) => column.key === k)?.label}
+                            className={cn(hideEmptyColumns ? "w-full" : "w-[90px]", "text-right max-md:w-full", BILL5_FIELD_CLASS)}
+                            value={field.value === 0 || field.value === "0" ? "" : field.value ?? ""}
+                            onChange={(e)=> field.onChange(e.target.value === "" ? "" : Math.trunc(Number(e.target.value.replace(/\D/g, ""))))}
+                          />
                         </FormControl>
                         <FormMessage/>
                       </FormItem>
@@ -1110,6 +1113,7 @@ export function BillForm(props: Props) {
 
   const initialFormat = props.bill ? detectFormat(props.bill.items) : "BILL1";
   const [formatType, setFormatType] = useState<BillFormat>(initialFormat);
+  const previousFormatType = useRef<BillFormat>(initialFormat);
   const [bill2SelectedColumns, setBill2SelectedColumns] = useState<Bill2OptionalColumn[]>(() => {
     if (initialFormat !== "BILL2" || !props.bill?.items.length) return [];
     const parsed = decB2(props.bill.items[0].purpose);
@@ -1216,7 +1220,7 @@ export function BillForm(props: Props) {
             it.to ? safeDate(it.to).toISOString() : safeDate(it.date).toISOString(),
           ].join("|");
           groups[key] ??= { name: parsed.parentName || "", dateFrom: safeDate(it.date), dateTo: it.to ? safeDate(it.to) : safeDate(it.date), children: [] };
-          groups[key].children.push({ incident: parsed.incident, purpose: parsed.purpose, bankName: parsed.bankName, time: parsed.time || "", dateFrom: parsed.dateFrom || "", dateTo: parsed.dateTo || "", vehicle: parsed.vehicle, local: parsed.local, trip: parsed.trip, food: parsed.food, hotel: parsed.hotel, others: parsed.others, advance: parsed.advance, remarks: parsed.remarks });
+          groups[key].children.push({ itemId: it.id, incident: parsed.incident, purpose: parsed.purpose, bankName: parsed.bankName, time: parsed.time || "", dateFrom: parsed.dateFrom || "", dateTo: parsed.dateTo || "", vehicle: parsed.vehicle, local: parsed.local, trip: parsed.trip, food: parsed.food, hotel: parsed.hotel, others: parsed.others, advance: parsed.advance, remarks: parsed.remarks });
         } catch {
           // fallback: push as single parent->child
           const key = String(it.date) + JSON.stringify(it);
@@ -1273,6 +1277,17 @@ export function BillForm(props: Props) {
   }, [formRecordId, reset]);
 
   useEffect(() => {
+    if (isView) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!form.formState.isDirty) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [form.formState.isDirty, isView]);
+
+  useEffect(() => {
     if ((draftState as any)?.success && (draftState as any)?.billId && lastDraftToastBillId.current !== (draftState as any).billId) {
       lastDraftToastBillId.current = (draftState as any).billId;
       toast({
@@ -1317,6 +1332,12 @@ export function BillForm(props: Props) {
   // switching format resets to one blank row
   useEffect(() => {
     if (isView) return;
+    // Effects also run on the initial page load. Resetting then would replace
+    // the bill loaded from the server with a blank row (especially visible
+    // after refreshing a supervisor's Bill-5 edit page). Only reset after the
+    // user actually changes the format selector.
+    if (previousFormatType.current === formatType) return;
+    previousFormatType.current = formatType;
     const cur = form.getValues();
     if (formatType === "BILL1") {
       reset({ ...cur, items: [{ date:new Date(), from:"", to:"", transport:"", purpose:"", amount: undefined as any }] });
@@ -1545,6 +1566,7 @@ export function BillForm(props: Props) {
           const sum = (Number(child.local)||0)+(Number(child.trip)||0)+(Number(child.food)||0)+(Number(child.hotel)||0)+(Number(child.others)||0);
           const net = sum - (Number(child.advance)||0);
           flatRows.push({
+            id: child.itemId,
             date: safeDate(parent.dateFrom).toISOString(),
             from: parent.dateFrom ? format(safeDate(parent.dateFrom), "PPP") : "",
             to: parent.dateTo ? safeDate(parent.dateTo).toISOString() : "",
@@ -1626,8 +1648,6 @@ export function BillForm(props: Props) {
     startTransition(() => submitAction(toServerFD(reviewData)));
   };
   const onSaveDraft  = (d: BillFormValues) => {
-    if (!validateAll()) return;
-    try { console.log("Bill draft payload items:", d.items); } catch {}
     startTransition(() => draftAction(toServerFD(d)));
   };
 
@@ -1785,6 +1805,11 @@ export function BillForm(props: Props) {
             value={formatType}
             onChange={(e) => {
               const nextFormat = e.target.value as BillFormat;
+              if (nextFormat === formatType) return;
+              if (props.bill && !window.confirm("Changing the bill format will clear the current line items. Continue?")) {
+                e.currentTarget.value = formatType;
+                return;
+              }
               setFormatType(nextFormat);
               if (!props.bill) {
                 form.setValue(
@@ -1849,19 +1874,32 @@ export function BillForm(props: Props) {
             selectedColumns={bill5SelectedColumns}
             hideEmptyColumns={mode === "edit"}
             onToggleColumn={(column, enabled) => {
+              if (!enabled) {
+                const hasValues = (form.getValues("items") as RowB5[]).some((parent) =>
+                  (parent.children || []).some((child) =>
+                    column === "bankName"
+                      ? Boolean(String(child.bankName || "").trim())
+                      : Number(child[column] || 0) !== 0
+                  )
+                );
+                if (hasValues && !window.confirm(`Removing ${BILL5_OPTIONAL_COLUMNS.find((item) => item.key === column)?.label} will clear its values. Continue?`)) return;
+              }
               setBill5SelectedColumns((current) =>
                 enabled
                   ? BILL5_OPTIONAL_COLUMNS.map((item) => item.key).filter((key) => key === column || current.includes(key))
                   : current.filter((key) => key !== column)
               );
-              if (!enabled) {
-                const items = form.getValues("items") as RowB5[];
-                items.forEach((parent, parentIndex) => {
-                  (parent.children || []).forEach((_, childIndex) => {
-                    form.setValue(`items.${parentIndex}.children.${childIndex}.${column}` as any, undefined);
-                  });
+              const items = form.getValues("items") as RowB5[];
+              items.forEach((parent, parentIndex) => {
+                (parent.children || []).forEach((child, childIndex) => {
+                  if (enabled && column !== "bankName" && Number(child[column] || 0) !== 0) return;
+                  form.setValue(
+                    `items.${parentIndex}.children.${childIndex}.${column}` as any,
+                    column === "bankName" ? "" : undefined,
+                    { shouldDirty: true }
+                  );
                 });
-              }
+              });
             }}
           />
         )}
