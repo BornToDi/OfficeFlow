@@ -58,6 +58,36 @@ export type BillViewData = {
 
 type BillFormat = "BILL1"|"BILL2"|"BILL3"|"BILL4"|"BILL5";
 
+const LOCAL_BILL_DRAFT_VERSION = 1;
+
+type LocalBillDraft = {
+  version: number;
+  savedAt: string;
+  formatType: BillFormat;
+  values: BillFormValues;
+  bill2SelectedColumns: Bill2OptionalColumn[];
+  bill23BankEnabled: boolean;
+  bill5SelectedColumns: Bill5OptionalColumn[];
+};
+
+function reviveLocalDraftDates(value: unknown, key = ""): unknown {
+  if (Array.isArray(value)) return value.map((item) => reviveLocalDraftDates(item));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([childKey, childValue]) => [childKey, reviveLocalDraftDates(childValue, childKey)])
+    );
+  }
+  if (
+    typeof value === "string" &&
+    (key === "date" || key === "dateFrom" || key === "dateTo") &&
+    /^\d{4}-\d{2}-\d{2}T/.test(value)
+  ) {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? value : parsed;
+  }
+  return value;
+}
+
 /* ---------- Row shapes ---------- */
 type RowB1 = {
   date: Date;
@@ -1108,11 +1138,20 @@ export function BillForm(props: Props) {
   const [isPending, startTransition] = useTransition();
   const [reviewData, setReviewData] = useState<BillFormValues | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [localSaveStatus, setLocalSaveStatus] = useState<"restored" | "saving" | "saved" | null>(null);
+  const [serverSaveStatus, setServerSaveStatus] = useState<"saving" | "saved" | "offline" | "error" | null>(null);
   const lastDraftToastBillId = useRef<string | undefined>(undefined);
   const downloadedSubmittedBillId = useRef<string | undefined>(undefined);
+  const localDraftReady = useRef(false);
+  const serverAutosaveRunning = useRef(false);
+  const serverAutosaveQueued = useRef(false);
 
   const initialFormat = props.bill ? detectFormat(props.bill.items) : "BILL1";
   const [formatType, setFormatType] = useState<BillFormat>(initialFormat);
+  // Keep the selected format available synchronously to autosave callbacks;
+  // React state still contains the previous format during the change event.
+  const activeFormatRef = useRef<BillFormat>(initialFormat);
+  const formatSwitchingRef = useRef(false);
   const previousFormatType = useRef<BillFormat>(initialFormat);
   const [bill2SelectedColumns, setBill2SelectedColumns] = useState<Bill2OptionalColumn[]>(() => {
     if (initialFormat !== "BILL2" || !props.bill?.items.length) return [];
@@ -1137,6 +1176,12 @@ export function BillForm(props: Props) {
       .map((column) => column.key)
       .filter((key) => selections.some((selection) => selection?.includes(key)));
   });
+  const bill2SelectedColumnsRef = useRef(bill2SelectedColumns);
+  const bill23BankEnabledRef = useRef(bill23BankEnabled);
+  const bill5SelectedColumnsRef = useRef(bill5SelectedColumns);
+  bill2SelectedColumnsRef.current = bill2SelectedColumns;
+  bill23BankEnabledRef.current = bill23BankEnabled;
+  bill5SelectedColumnsRef.current = bill5SelectedColumns;
 
   // Employee Code to display + submit (from existing bill or current user)
   const effectiveEmployeeCode =
@@ -1266,6 +1311,7 @@ export function BillForm(props: Props) {
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
   const supervisors = "supervisors" in props ? props.supervisors ?? [] : [];
   const formRecordId = "bill" in props ? props.bill?.id ?? "new-bill" : props.user.id;
+  const localDraftKey = `officeflow:bill-create-draft:${effectiveEmployeeId || formRecordId}`;
 
   // Reset only when navigating to a different bill/user. Depending on the whole
   // props/defaults object resets edited fields after every controlled-input
@@ -1276,8 +1322,79 @@ export function BillForm(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formRecordId, reset]);
 
+  // A create-form draft is kept in this browser as a safety net. This is
+  // independent of the server-side Save Draft button, so refreshes and
+  // accidental navigation cannot discard typed values.
   useEffect(() => {
-    if (isView) return;
+    if (isView || mode !== "create") return;
+    try {
+      const stored = window.localStorage.getItem(localDraftKey);
+      if (stored) {
+        const draft = JSON.parse(stored) as LocalBillDraft;
+        if (draft.version === LOCAL_BILL_DRAFT_VERSION && draft.values) {
+          const restoredValues = reviveLocalDraftDates(draft.values) as BillFormValues;
+          activeFormatRef.current = draft.formatType;
+          previousFormatType.current = draft.formatType;
+          setFormatType(draft.formatType);
+          setBill2SelectedColumns(draft.bill2SelectedColumns ?? []);
+          setBill23BankEnabled(Boolean(draft.bill23BankEnabled));
+          setBill5SelectedColumns(draft.bill5SelectedColumns ?? []);
+          reset(restoredValues);
+          setLocalSaveStatus("restored");
+        }
+      }
+    } catch (error) {
+      console.warn("Could not restore local bill draft:", error);
+    } finally {
+      localDraftReady.current = true;
+    }
+  }, [isView, localDraftKey, mode, reset]);
+
+  useEffect(() => {
+    if (isView || mode !== "create") return;
+    const saveLocally = (values: BillFormValues) => {
+      try {
+        const draft: LocalBillDraft = {
+          version: LOCAL_BILL_DRAFT_VERSION,
+          savedAt: new Date().toISOString(),
+          formatType: activeFormatRef.current,
+          values,
+          bill2SelectedColumns,
+          bill23BankEnabled,
+          bill5SelectedColumns,
+        };
+        window.localStorage.setItem(localDraftKey, JSON.stringify(draft));
+        setLocalSaveStatus("saved");
+      } catch (error) {
+        console.warn("Could not auto-save local bill draft:", error);
+        setLocalSaveStatus(null);
+      }
+    };
+    const subscription = form.watch((values) => {
+      if (!localDraftReady.current) return;
+      // react-hook-form calls this after its own value has updated, so saving
+      // synchronously here cannot race a refresh or route change.
+      saveLocally(values as BillFormValues);
+    });
+    // Flush synchronously when the tab is refreshed/closed, including changes
+    // made inside the debounce window.
+    const flushLocalDraft = () => {
+      if (localDraftReady.current) saveLocally(form.getValues());
+    };
+    window.addEventListener("pagehide", flushLocalDraft);
+    if (localDraftReady.current) saveLocally(form.getValues());
+    return () => {
+      window.removeEventListener("pagehide", flushLocalDraft);
+      saveLocally(form.getValues());
+      subscription.unsubscribe();
+    };
+  }, [bill2SelectedColumns, bill23BankEnabled, bill5SelectedColumns, form, formatType, isView, localDraftKey, mode]);
+
+  useEffect(() => {
+    // Create mode is continuously persisted in localStorage, so blocking a
+    // refresh with the browser's generic "may not be saved" dialog is both
+    // misleading and unnecessary. Keep the guard for server-backed edits.
+    if (isView || mode === "create") return;
     const warnBeforeUnload = (event: BeforeUnloadEvent) => {
       if (!form.formState.isDirty) return;
       event.preventDefault();
@@ -1285,11 +1402,14 @@ export function BillForm(props: Props) {
     };
     window.addEventListener("beforeunload", warnBeforeUnload);
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+    // `mode` is fixed for the lifetime of a mounted BillForm.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.formState.isDirty, isView]);
 
   useEffect(() => {
     if ((draftState as any)?.success && (draftState as any)?.billId && lastDraftToastBillId.current !== (draftState as any).billId) {
       lastDraftToastBillId.current = (draftState as any).billId;
+      if (mode === "create") window.localStorage.removeItem(localDraftKey);
       toast({
         title: "Bill saved as draft",
         description: "Your draft has been saved successfully.",
@@ -1297,7 +1417,7 @@ export function BillForm(props: Props) {
       // Redirect to bill detail page to view/approve
       router.push(`/bills/${(draftState as any).billId}`);
     }
-  }, [draftState, router]);
+  }, [draftState, localDraftKey, mode, router]);
 
   // Files for attachments: for BILL5 we need nested arrays (parent -> child files)
   const [rowFiles, setRowFiles] = useState<(File | null)[][]>(
@@ -1337,6 +1457,7 @@ export function BillForm(props: Props) {
     // after refreshing a supervisor's Bill-5 edit page). Only reset after the
     // user actually changes the format selector.
     if (previousFormatType.current === formatType) return;
+    activeFormatRef.current = formatType;
     previousFormatType.current = formatType;
     const cur = form.getValues();
     if (formatType === "BILL1") {
@@ -1354,6 +1475,9 @@ export function BillForm(props: Props) {
       reset({ ...cur, items: [{ name: "", dateFrom:new Date(), dateTo:new Date(), children: [{ incident: "", purpose: "", time: "", dateFrom: "", dateTo: "", vehicle: "", local: undefined as any, trip: undefined as any, food: undefined as any, hotel: undefined as any, others: undefined as any, advance: undefined as any, remarks: "" }] } as any] });
       setRowFiles(makeSingleAttachmentRow());
     }
+    // Ignore the programmatic company/row changes caused by switching format.
+    // The next real user edit will save the complete form in one server draft.
+    queueMicrotask(() => { formatSwitchingRef.current = false; });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formatType]);
 
@@ -1444,6 +1568,7 @@ export function BillForm(props: Props) {
       : "";
     if (!submittedBillId || downloadedSubmittedBillId.current === submittedBillId) return;
     downloadedSubmittedBillId.current = submittedBillId;
+    if (mode === "create") window.localStorage.removeItem(localDraftKey);
 
     const currentUserId = "user" in props ? String((props.user as any)?.id || "") : "";
     const isBillOwnerSubmission = Boolean(currentUserId && currentUserId === String(effectiveEmployeeId));
@@ -1466,12 +1591,13 @@ export function BillForm(props: Props) {
         router.replace("/dashboard");
       }
     })();
-  }, [submitState, router, effectiveEmployeeId]);
+  }, [submitState, router, effectiveEmployeeId, localDraftKey, mode]);
 
   /* ---------- submit payload ---------- */
-  const toServerFD = (data: BillFormValues) => {
+  const toServerFD = (data: BillFormValues, includeFiles = true) => {
     const fd = new FormData();
-    const totals = calculateBillTotals(formatType, data.items);
+    const payloadFormat = mode === "create" ? activeFormatRef.current : formatType;
+    const totals = calculateBillTotals(payloadFormat, data.items);
     if (data.billId) fd.append("billId", data.billId);
     fd.append("companyName", (data.companyName ?? "") as string);
     fd.append("companyAddress", (data.companyAddress ?? "") as string);
@@ -1481,9 +1607,9 @@ export function BillForm(props: Props) {
     fd.append("employeeIdOrCode", effectiveEmployeeCode);
     fd.append("employeeId", effectiveEmployeeId);
 
-    fd.append("formatType", formatType);
+    fd.append("formatType", payloadFormat);
 
-    if (formatType === "BILL1") {
+    if (payloadFormat === "BILL1") {
       const rows = (data.items as RowB1[]).map((r) => ({
         date: safeDate(r.date).toISOString(),
         from: r.from ?? "", to: r.to ?? "",
@@ -1491,9 +1617,9 @@ export function BillForm(props: Props) {
         amount: Number(r.amount || 0),
       }));
       fd.append("items", JSON.stringify(rows));
-    } else if (formatType === "BILL2") {
+    } else if (payloadFormat === "BILL2") {
       const rows = (data.items as RowB2[]).map((r) => {
-        const packed = encB2({ ...r, selectedColumns: bill2SelectedColumns });
+        const packed = encB2({ ...r, selectedColumns: bill2SelectedColumnsRef.current });
         const sum = (Number(r.local)||0)+(Number(r.trip)||0)+(Number(r.food)||0)+(Number(r.hotel)||0)+(Number(r.others)||0);
         const net = sum - (Number(r.advance)||0);
         return {
@@ -1510,11 +1636,11 @@ export function BillForm(props: Props) {
       // attachments
       for (let i = 0; i < rowFiles.length; i++) {
         const f = (rowFiles[i] as (File | null)[] | undefined)?.[0] ?? null;
-        if (f) fd.append(`attachment_${i}`, f);
+        if (includeFiles && f) fd.append(`attachment_${i}`, f);
       }
-    } else if (formatType === "BILL3") {
+    } else if (payloadFormat === "BILL3") {
       const rows = (data.items as RowB3[]).map((r) => {
-        const packed = encB3({ ...r, showBankName: bill23BankEnabled });
+        const packed = encB3({ ...r, showBankName: bill23BankEnabledRef.current });
         const sum = (Number(r.food)||0)+(Number(r.hotel)||0)+(Number(r.others)||0);
         const net = sum - (Number(r.advance)||0);
         return {
@@ -1530,9 +1656,9 @@ export function BillForm(props: Props) {
 
       for (let i = 0; i < rowFiles.length; i++) {
         const f = (rowFiles[i] as (File | null)[] | undefined)?.[0] ?? null;
-        if (f) fd.append(`attachment_${i}`, f);
+        if (includeFiles && f) fd.append(`attachment_${i}`, f);
       }
-    } else if (formatType === "BILL4") {
+    } else if (payloadFormat === "BILL4") {
       // BILL4
       const rows = (data.items as RowB4[]).map((r) => {
         const packed = encB4(r);
@@ -1551,9 +1677,9 @@ export function BillForm(props: Props) {
 
       for (let i = 0; i < rowFiles.length; i++) {
         const f = (rowFiles[i] as (File | null)[] | undefined)?.[0] ?? null;
-        if (f) fd.append(`attachment_${i}`, f);
+        if (includeFiles && f) fd.append(`attachment_${i}`, f);
       }
-    } else if (formatType === "BILL5") {
+    } else if (payloadFormat === "BILL5") {
       // BILL5 (combined) — flatten parent->children into individual server rows
       const flatRows: any[] = [];
       const dateRowsEdited: boolean[] = [];
@@ -1562,7 +1688,7 @@ export function BillForm(props: Props) {
           form.getFieldState(`items.${parentIndex}.dateFrom` as any).isDirty ||
           form.getFieldState(`items.${parentIndex}.dateTo` as any).isDirty;
         (parent.children || []).forEach((child) => {
-          const packed = encB5Child(parent, child, bill5SelectedColumns);
+          const packed = encB5Child(parent, child, bill5SelectedColumnsRef.current);
           const sum = (Number(child.local)||0)+(Number(child.trip)||0)+(Number(child.food)||0)+(Number(child.hotel)||0)+(Number(child.others)||0);
           const net = sum - (Number(child.advance)||0);
           flatRows.push({
@@ -1586,7 +1712,7 @@ export function BillForm(props: Props) {
       for (let p = 0; p < rowFiles.length; p++) {
         for (let c = 0; c < (rowFiles[p] || []).length; c++) {
           const f = (rowFiles[p] as (File | null)[] | undefined)?.[c] ?? null;
-          if (f) fd.append(`attachment_${idx}`, f);
+          if (includeFiles && f) fd.append(`attachment_${idx}`, f);
           idx++;
         }
       }
@@ -1599,6 +1725,83 @@ export function BillForm(props: Props) {
     fd.delete("employeeDesignation");
     return fd;
   };
+
+  // Persist a real server-side DRAFT after the user pauses typing. Only one
+  // request runs at a time; changes made during a request are queued so a new
+  // bill cannot accidentally produce duplicate drafts.
+  useEffect(() => {
+    if (isView || mode !== "create") return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let disposed = false;
+
+    const syncDraft = async () => {
+      if (disposed) return;
+      if (!navigator.onLine) {
+        setServerSaveStatus("offline");
+        serverAutosaveQueued.current = true;
+        return;
+      }
+      if (serverAutosaveRunning.current) {
+        serverAutosaveQueued.current = true;
+        return;
+      }
+
+      serverAutosaveRunning.current = true;
+      serverAutosaveQueued.current = false;
+      setServerSaveStatus("saving");
+      try {
+        const result = await saveDraft(undefined, toServerFD(form.getValues(), false));
+        if (disposed) return;
+        if (result?.success && result.billId) {
+          if (!form.getValues("billId")) {
+            form.setValue("billId", result.billId, { shouldDirty: false });
+          }
+          setServerSaveStatus("saved");
+        } else {
+          setServerSaveStatus("error");
+        }
+      } catch (error) {
+        console.warn("Bill server autosave failed; local backup is retained:", error);
+        if (!disposed) setServerSaveStatus(navigator.onLine ? "error" : "offline");
+      } finally {
+        serverAutosaveRunning.current = false;
+        if (!disposed && serverAutosaveQueued.current) {
+          serverAutosaveQueued.current = false;
+          void syncDraft();
+        }
+      }
+    };
+
+    const scheduleSync = () => {
+      if (!localDraftReady.current) return;
+      if (timer) clearTimeout(timer);
+      // Create the server draft on the very first edit, so leaving the page
+      // immediately still leaves a DRAFT in Bills/Dashboard.
+      if (!form.getValues("billId")) {
+        void syncDraft();
+        return;
+      }
+      timer = setTimeout(() => void syncDraft(), 1200);
+    };
+    const subscription = form.watch((_values, info) => {
+      // Setting billId after the first successful save must not cause a loop.
+      if (info.name === "billId" || formatSwitchingRef.current) return;
+      scheduleSync();
+    });
+    const syncWhenOnline = () => {
+      serverAutosaveQueued.current = true;
+      void syncDraft();
+    };
+    window.addEventListener("online", syncWhenOnline);
+    return () => {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+      subscription.unsubscribe();
+      window.removeEventListener("online", syncWhenOnline);
+    };
+    // toServerFD intentionally uses the current render's format/column state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, isView, mode]);
 
   const buildReviewBill = (data: BillFormValues): BillViewData => {
     const payload = toServerFD(data);
@@ -1810,6 +2013,8 @@ export function BillForm(props: Props) {
                 e.currentTarget.value = formatType;
                 return;
               }
+              formatSwitchingRef.current = true;
+              activeFormatRef.current = nextFormat;
               setFormatType(nextFormat);
               if (!props.bill) {
                 form.setValue(
@@ -1954,6 +2159,21 @@ export function BillForm(props: Props) {
             Save Draft
           </Button>
           <SubmitButton isPending={isPending}>Review &amp; Submit</SubmitButton>
+          {mode === "create" && localSaveStatus ? (
+            <p className="self-center text-xs text-muted-foreground" aria-live="polite">
+              {serverSaveStatus === "saving"
+                ? "Saving server draft..."
+                : serverSaveStatus === "saved"
+                  ? "Draft auto-saved"
+                  : serverSaveStatus === "offline"
+                    ? "Offline — saved in this browser; will sync when online"
+                    : serverSaveStatus === "error"
+                      ? "Server sync failed — safely saved in this browser"
+                      : localSaveStatus === "restored"
+                        ? "Unsaved work restored from this browser"
+                        : "Saved in this browser"}
+            </p>
+          ) : null}
         </div>
 
         <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
