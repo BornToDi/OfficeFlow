@@ -1140,9 +1140,11 @@ export function BillForm(props: Props) {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [localSaveStatus, setLocalSaveStatus] = useState<"restored" | "saving" | "saved" | null>(null);
   const [serverSaveStatus, setServerSaveStatus] = useState<"saving" | "saved" | "offline" | "error" | null>(null);
+  const [serverSaveError, setServerSaveError] = useState("");
   const lastDraftToastBillId = useRef<string | undefined>(undefined);
   const downloadedSubmittedBillId = useRef<string | undefined>(undefined);
   const localDraftReady = useRef(false);
+  const localDraftRestored = useRef(false);
   const serverAutosaveRunning = useRef(false);
   const serverAutosaveQueued = useRef(false);
 
@@ -1340,6 +1342,7 @@ export function BillForm(props: Props) {
           setBill23BankEnabled(Boolean(draft.bill23BankEnabled));
           setBill5SelectedColumns(draft.bill5SelectedColumns ?? []);
           reset(restoredValues);
+          localDraftRestored.current = true;
           setLocalSaveStatus("restored");
         }
       }
@@ -1749,20 +1752,38 @@ export function BillForm(props: Props) {
       serverAutosaveRunning.current = true;
       serverAutosaveQueued.current = false;
       setServerSaveStatus("saving");
+      setServerSaveError("");
       try {
-        const result = await saveDraft(undefined, toServerFD(form.getValues(), false));
+        let result = await saveDraft(undefined, toServerFD(form.getValues(), false));
+        const staleDraftReference = Boolean(
+          result?.error &&
+          form.getValues("billId") &&
+          /not found|not allowed to edit/i.test(result.error)
+        );
+        if (staleDraftReference) {
+          // A local browser backup may outlive a draft that was submitted or
+          // deleted in another tab. Detach that stale id and create a fresh
+          // server draft with the still-safe local values.
+          form.setValue("billId", undefined, { shouldDirty: false });
+          result = await saveDraft(undefined, toServerFD(form.getValues(), false));
+        }
         if (disposed) return;
         if (result?.success && result.billId) {
           if (!form.getValues("billId")) {
             form.setValue("billId", result.billId, { shouldDirty: false });
           }
           setServerSaveStatus("saved");
+          setServerSaveError("");
         } else {
           setServerSaveStatus("error");
+          setServerSaveError(result?.error || "Unknown server error");
         }
       } catch (error) {
         console.warn("Bill server autosave failed; local backup is retained:", error);
-        if (!disposed) setServerSaveStatus(navigator.onLine ? "error" : "offline");
+        if (!disposed) {
+          setServerSaveStatus(navigator.onLine ? "error" : "offline");
+          setServerSaveError(error instanceof Error ? error.message : "Could not reach the server");
+        }
       } finally {
         serverAutosaveRunning.current = false;
         if (!disposed && serverAutosaveQueued.current) {
@@ -1793,6 +1814,12 @@ export function BillForm(props: Props) {
       void syncDraft();
     };
     window.addEventListener("online", syncWhenOnline);
+    // If a deployment refresh interrupted the previous request, the browser
+    // backup is already restored. Resume the server DRAFT immediately.
+    if (localDraftRestored.current) {
+      localDraftRestored.current = false;
+      void syncDraft();
+    }
     return () => {
       disposed = true;
       if (timer) clearTimeout(timer);
@@ -2168,7 +2195,7 @@ export function BillForm(props: Props) {
                   : serverSaveStatus === "offline"
                     ? "Offline — saved in this browser; will sync when online"
                     : serverSaveStatus === "error"
-                      ? "Server sync failed — safely saved in this browser"
+                      ? `Server sync failed: ${serverSaveError || "unknown error"} — safely saved in this browser`
                       : localSaveStatus === "restored"
                         ? "Unsaved work restored from this browser"
                         : "Saved in this browser"}

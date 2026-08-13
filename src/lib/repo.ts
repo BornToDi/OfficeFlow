@@ -920,13 +920,6 @@ export async function saveBillDraft(input: {
           attachmentUrl: it.attachmentUrl ?? null,
         })),
       },
-      history: {
-        create: {
-          status: "DRAFT",
-          actorId: input.actorId ?? null,
-          comment: input.comment ?? "Draft saved",
-        },
-      },
     },
     include: { items: true, history: true },
   });
@@ -1004,14 +997,18 @@ export async function updateBillDraft(
       }
     }
 
-    await tx.billHistory.create({
-      data: {
-        billId,
-        status: input.preserveStatus ? "SUBMITTED" : "DRAFT",
-        actorId: input.actorId ?? null,
-        comment: input.comment ?? (input.preserveStatus ? "Edited before approval" : "Draft updated"),
-      },
-    });
+    // Autosave updates should not flood the audit trail. History begins when
+    // the employee submits; retain only meaningful post-submission edits.
+    if (input.preserveStatus) {
+      await tx.billHistory.create({
+        data: {
+          billId,
+          status: "SUBMITTED",
+          actorId: input.actorId ?? null,
+          comment: input.comment ?? "Edited before approval",
+        },
+      });
+    }
 
     return tx.bill.findUnique({
       where: { id: billId },

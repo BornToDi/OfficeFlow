@@ -284,12 +284,15 @@ async function approveOrForward(formData: FormData) {
       (change) =>
         change.field !== "Total amount" && !/^Row \d+ amount$/i.test(change.field)
     );
+  const nonDraftHistory = dbBill.history.filter(
+    (entry) => String(entry.status).toUpperCase() !== "DRAFT"
+  );
   const visibleHistory = isBill5
-    ? dbBill.history.filter(
+    ? nonDraftHistory.filter(
         (entry) =>
           !entry.comment?.toLowerCase().includes("edited by supervisor before approval")
       )
-    : dbBill.history;
+    : nonDraftHistory;
 
   return (
     <div className="min-w-0 max-w-full space-y-6 overflow-x-hidden p-1 sm:p-2">
@@ -502,7 +505,7 @@ async function approveOrForward(formData: FormData) {
             <li key={h.id} className="mb-4 ms-4">
               <span className="absolute -start-1.5 mt-1 h-3 w-3 rounded-full bg-primary" />
               <div className="text-sm">
-                <div className="font-medium">{h.status}</div>
+                <div className="font-medium">{h.status === "SUBMITTED" ? "Submitted by employee" : h.status}</div>
                 {visibleComment && <div className="text-muted-foreground">{visibleComment}</div>}
                 <div className="text-xs text-muted-foreground">
                   {new Date(h.timestamp).toLocaleString()}
