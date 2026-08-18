@@ -1254,7 +1254,15 @@ export async function getBillsForRolePage(
       ],
     };
   } else if (user.role === "accounts") {
-    where = { status: { in: ["APPROVED_BY_SUPERVISOR", "APPROVED_BY_MANAGEMENT"] } };
+    where = {
+      status: {
+        in: [
+          "APPROVED_BY_SUPERVISOR",
+          "APPROVED_BY_ACCOUNTS",
+          "APPROVED_BY_MANAGEMENT",
+        ],
+      },
+    };
   } else if (user.role === "followup") {
     where = { status: { in: ["APPROVED_BY_SUPERVISOR", "APPROVED_BY_MANAGEMENT"] } };
   } else if (user.role === "management") {

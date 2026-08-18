@@ -83,7 +83,7 @@ const statusOptions: Array<{ value: "ALL" | Status; label: string }> = [
   { value: "DRAFT", label: "Draft" },
   { value: "SUBMITTED", label: "Submitted" },
   { value: "APPROVED_BY_SUPERVISOR", label: "Approved by Supervisor" },
-  { value: "APPROVED_BY_ACCOUNTS", label: "Pending Management" },
+  { value: "APPROVED_BY_ACCOUNTS", label: "Approved by Accounts" },
   { value: "APPROVED_BY_MANAGEMENT", label: "Pending Payment" },
   { value: "REJECTED_BY_SUPERVISOR", label: "Rejected by Supervisor" },
   { value: "REJECTED_BY_ACCOUNTS", label: "Rejected by Accounts" },
